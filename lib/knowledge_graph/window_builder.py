@@ -104,48 +104,13 @@ class ConceptWindow(Window):
         self.window_type = "concept"
 
 
-@dataclass
-class DiscourseWindow(Window):
-    """Window for discourse extraction at speaker boundaries."""
-
-    transition_from: str | None = None
-    transition_to: str | None = None
-    window_index: int = 0
-
-    def __post_init__(self):
-        self.window_type = "discourse"
-
-
 class WindowBuilder:
-    """Build concept and discourse windows from transcript utterances."""
+    """Build concept windows from transcript utterances."""
 
     DEFAULT_WINDOW_SIZE = 10
     DEFAULT_STRIDE = 6
 
     MIN_UTTERANCE_LENGTH = 15
-
-    DEFAULT_CONTEXT_SIZE = 3
-
-    CONCEPT_PREDICATES = [
-        "AMENDS",
-        "GOVERNS",
-        "MODERNIZES",
-        "AIMS_TO_REDUCE",
-        "REQUIRES_APPROVAL",
-        "IMPLEMENTED_BY",
-        "RESPONSIBLE_FOR",
-        "ASSOCIATED_WITH",
-        "CAUSES",
-        "ADDRESSES",
-        "PROPOSES",
-    ]
-
-    DISCOURSE_PREDICATES = [
-        "RESPONDS_TO",
-        "AGREES_WITH",
-        "DISAGREES_WITH",
-        "QUESTIONS",
-    ]
 
     NODE_TYPES = [
         "foaf:Person",
@@ -220,42 +185,6 @@ class WindowBuilder:
 
         return windows
 
-    def build_discourse_windows(
-        self, utterances: list[Utterance], context_size: int = 3
-    ) -> list[DiscourseWindow]:
-        """Build discourse windows at speaker change boundaries.
-
-        Args:
-            utterances: List of all utterances for the video
-            context_size: Number of utterances to include from each speaker
-        """
-        windows = []
-        window_index = 0
-
-        for i in range(len(utterances) - 1):
-            current = utterances[i]
-            next_utt = utterances[i + 1]
-
-            if current.speaker_id != next_utt.speaker_id:
-                before_utterances = utterances[max(0, i - context_size + 1) : i + 1]
-                after_utterances = utterances[
-                    i + 1 : min(len(utterances), i + 1 + context_size)
-                ]
-
-                window_utterances = before_utterances + after_utterances
-
-                if window_utterances:
-                    window = DiscourseWindow(
-                        utterances=window_utterances,
-                        transition_from=current.speaker_id,
-                        transition_to=next_utt.speaker_id,
-                        window_index=window_index,
-                    )
-                    windows.append(window)
-                    window_index += 1
-
-        return windows
-
     def build_all_windows(
         self,
         youtube_video_id: str,
@@ -263,19 +192,15 @@ class WindowBuilder:
         stride: int = DEFAULT_STRIDE,
         context_size: int = 3,
         filter_short: bool = True,
-    ) -> dict[str, list[Window]]:
-        """Build both concept and discourse windows for a video."""
+    ) -> list[ConceptWindow]:
+        """Build concept windows for a video."""
         utterances = self.fetch_utterances(youtube_video_id)
 
         concept_windows = self.build_concept_windows(
             utterances, window_size, stride, filter_short
         )
-        discourse_windows = self.build_discourse_windows(utterances, context_size)
 
-        return {
-            "concept": [w for w in concept_windows],
-            "discourse": [w for w in discourse_windows],
-        }
+        return concept_windows
 
     def get_candidate_nodes(
         self,

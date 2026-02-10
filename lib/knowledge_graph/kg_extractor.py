@@ -20,7 +20,6 @@ from lib.id_generators import generate_kg_edge_id, generate_kg_node_id, normaliz
 from lib.db.pgvector import vector_literal
 from lib.knowledge_graph.window_builder import (
     ConceptWindow,
-    DiscourseWindow,
     Window,
     WindowBuilder,
 )
@@ -68,7 +67,7 @@ class KGExtractor:
 
     DEFAULT_CONFIG = GenerateContentConfig(temperature=0.0)
 
-    CONCEPT_PREDICATES = [
+    PREDICATES = [
         "AMENDS",
         "GOVERNS",
         "MODERNIZES",
@@ -80,9 +79,6 @@ class KGExtractor:
         "CAUSES",
         "ADDRESSES",
         "PROPOSES",
-    ]
-
-    DISCOURSE_PREDICATES = [
         "RESPONDS_TO",
         "AGREES_WITH",
         "DISAGREES_WITH",
@@ -120,11 +116,9 @@ class KGExtractor:
             raise ValueError("GOOGLE_API_KEY environment variable is not set")
         return api_key
 
-    def _build_concept_prompt(
-        self, window: ConceptWindow, known_nodes_table: str
-    ) -> str:
-        """Build prompt for concept extraction window."""
-        predicates = ", ".join(self.CONCEPT_PREDICATES)
+    def _build_prompt(self, window: ConceptWindow, known_nodes_table: str) -> str:
+        """Build prompt for extraction window."""
+        predicates = ", ".join(self.PREDICATES)
         node_types = ", ".join(self.NODE_TYPES)
 
         prompt = f"""You are extracting knowledge graph entities and relationships from parliamentary transcripts.
@@ -141,9 +135,10 @@ RULES:
 3. Predicate must be from this list: {predicates}
 4. Node type must be from this list: {node_types} (use "skos:Concept" for abstract concepts)
 5. Evidence must be a direct substring quote from the transcript window.
-6. Utterance IDs must refer to the provided utterances.
+6. Utterance IDs must refer to the provided utterances (from utterance_id=...).
 7. Return valid JSON only - no markdown, no comments.
 8. Focus on substantive relationships - avoid trivial connections.
+9. For discourse relationships (RESPONDS_TO, AGREES_WITH, DISAGREES_WITH, QUESTIONS), focus only on speaker-to-speaker connections with clear evidence. Generic acknowledgments should be avoided.
 
 OUTPUT FORMAT:
 {{
@@ -157,59 +152,12 @@ OUTPUT FORMAT:
       "target_ref": "n1",
       "evidence": "I want today ... to offer prescriptions in relation to the Road Traffic Act...",
       "utterance_ids": ["Syxyah7QIaM:2564", "Syxyah7QIaM:2589"],
-      "earliest_timestamp": "0:44:09",
       "confidence": 0.72
     }}
   ]
 }}
 
 Extract entities and relationships from the transcript window above. Return JSON only."""
-        return prompt
-
-    def _build_discourse_prompt(
-        self, window: DiscourseWindow, known_nodes_table: str
-    ) -> str:
-        """Build prompt for discourse extraction window."""
-        predicates = ", ".join(self.DISCOURSE_PREDICATES)
-
-        prompt = f"""You are extracting discourse relationships between speakers from parliamentary transcripts.
-
-TRANSCRIPT WINDOW:
-{window.text}
-
-SPEAKERS IN WINDOW:
-{", ".join(window.speaker_ids)}
-
-KNOWN SPEAKER NODES:
-{known_nodes_table}
-
-RULES:
-1. Extract only edges among the speaker nodes shown above.
-2. Use speaker ids directly (e.g., "speaker_s_mr_ralph_thorne_1").
-3. Predicate must be from this list: {predicates}
-4. Do NOT create new nodes - only use existing speaker nodes.
-5. Evidence must be a direct substring quote from the transcript window.
-6. Utterance IDs must refer to the provided utterances (from utterance_id=...).
-7. Return valid JSON only - no markdown, no comments.
-8. Focus on meaningful discourse - acknowledge generic agreements or disagreements only when clearly stated.
-9. Optionally include predicate_raw (short phrase) to preserve nuance.
-
-OUTPUT FORMAT:
-{{
-  "edges": [
-    {{
-      "source_ref": "speaker_s_mr_ralph_thorne_1",
-      "predicate": "RESPONDS_TO",
-      "target_ref": "speaker_s_mrs_joan_yuille_williams_1",
-      "evidence": "I'd like to respond to the member opposite...",
-      "utterance_ids": ["Syxyah7QIaM:2589"],
-      "earliest_timestamp": "0:44:30",
-      "confidence": 0.85
-    }}
-  ]
-}}
-
-Extract discourse relationships from the transcript window above. Return JSON only."""
         return prompt
 
     @retry(
@@ -249,7 +197,11 @@ Extract discourse relationships from the transcript window above. Return JSON on
         )
         known_nodes_table = self.window_builder.format_known_nodes(candidates)
 
-        prompt = self._build_concept_prompt(window, known_nodes_table)
+        utterance_timestamps = {
+            u.id: (u.timestamp_str, u.seconds_since_start) for u in window.utterances
+        }
+
+        prompt = self._build_prompt(window, known_nodes_table)
 
         try:
             raw_response = self._call_gemini(prompt)
@@ -268,14 +220,26 @@ Extract discourse relationships from the transcript window above. Return JSON on
 
             edges = []
             for edge_data in data.get("edges", []):
+                utterance_ids = edge_data["utterance_ids"]
+
+                earliest_timestamp_str = None
+                earliest_seconds = None
+
+                for uid in utterance_ids:
+                    if uid in utterance_timestamps:
+                        ts_str, ts_seconds = utterance_timestamps[uid]
+                        if earliest_seconds is None or ts_seconds < earliest_seconds:
+                            earliest_timestamp_str = ts_str
+                            earliest_seconds = ts_seconds
+
                 edges.append(
                     ExtractedEdge(
                         source_ref=edge_data["source_ref"],
                         predicate=edge_data["predicate"],
                         target_ref=edge_data["target_ref"],
                         evidence=edge_data["evidence"],
-                        utterance_ids=edge_data["utterance_ids"],
-                        earliest_timestamp=edge_data["earliest_timestamp"],
+                        utterance_ids=utterance_ids,
+                        earliest_timestamp=earliest_timestamp_str,
                         confidence=edge_data["confidence"],
                     )
                 )
@@ -283,54 +247,6 @@ Extract discourse relationships from the transcript window above. Return JSON on
             return ExtractionResult(
                 window=window,
                 nodes_new=nodes_new,
-                edges=edges,
-                raw_response=raw_response,
-                parse_success=True,
-            )
-
-        except Exception as e:
-            return ExtractionResult(
-                window=window,
-                nodes_new=[],
-                edges=[],
-                raw_response=prompt if "prompt" in locals() else "",
-                parse_success=False,
-                error=str(e),
-            )
-
-    def extract_from_discourse_window(
-        self, window: DiscourseWindow, youtube_video_id: str, top_k: int = 25
-    ) -> ExtractionResult:
-        """Extract discourse relationships from a discourse window."""
-        candidates = self.window_builder.get_candidate_nodes(
-            window.text, window.speaker_ids, youtube_video_id, top_k
-        )
-        speaker_candidates = [c for c in candidates if c["type"] == "foaf:Person"]
-        known_nodes_table = self.window_builder.format_known_nodes(speaker_candidates)
-
-        prompt = self._build_discourse_prompt(window, known_nodes_table)
-
-        try:
-            raw_response = self._call_gemini(prompt)
-            data = self._parse_json_response(raw_response)
-
-            edges = []
-            for edge_data in data.get("edges", []):
-                edges.append(
-                    ExtractedEdge(
-                        source_ref=edge_data["source_ref"],
-                        predicate=edge_data["predicate"],
-                        target_ref=edge_data["target_ref"],
-                        evidence=edge_data["evidence"],
-                        utterance_ids=edge_data["utterance_ids"],
-                        earliest_timestamp=edge_data["earliest_timestamp"],
-                        confidence=edge_data["confidence"],
-                    )
-                )
-
-            return ExtractionResult(
-                window=window,
-                nodes_new=[],
                 edges=edges,
                 raw_response=raw_response,
                 parse_success=True,

@@ -52,8 +52,8 @@ Therefore: switch to an **LLM-first concept KG extraction** where the model can 
 - Bills table (if available)
 
 2) Build transcript windows from utterances (`sentences` table):
-- Concept extraction windows (fixed size + overlap)
-- Discourse windows at speaker-change boundaries
+- Concept extraction windows (fixed size + overlap): 10 utterances, stride 6
+- No separate discourse windows - discourse predicates included in concept extraction
 
 3) For each window:
 - Retrieve a small candidate set of canonical KG nodes (vector search + alias hits)
@@ -61,6 +61,7 @@ Therefore: switch to an **LLM-first concept KG extraction** where the model can 
   - link to existing canonical node ids when possible
   - create new nodes otherwise
   - emit labeled edges with provenance
+  - timestamps extracted from specific utterances referenced by each edge
 
 4) Canonicalize new nodes (hash ids), upsert into Postgres, write edges into Postgres
 
@@ -241,8 +242,9 @@ Keep prompt context bounded:
 
 ### Predicates (initial allowlist)
 
-Concept edges:
+All 15 predicates extracted in single pass from concept windows:
 
+**Conceptual Relationships:**
 - `AMENDS`
 - `GOVERNS`
 - `MODERNIZES`
@@ -255,8 +257,7 @@ Concept edges:
 - `ADDRESSES`
 - `PROPOSES`
 
-Discourse edges (adjacent-only):
-
+**Discourse Relationships:**
 - `RESPONDS_TO`
 - `AGREES_WITH`
 - `DISAGREES_WITH`
@@ -266,7 +267,7 @@ Discourse edges (adjacent-only):
 
 ### Output schema (strict JSON)
 
-For concept windows, Gemini returns:
+For each window, Gemini returns:
 
 ```json
 {
@@ -289,13 +290,13 @@ For concept windows, Gemini returns:
 
 Rules enforced in prompt:
 
-- If the node matches a Known Node, **MUST** use the existing `id` (do not create a new node).
+- If a node matches a Known Node, **MUST** use the existing `id` (do not create a new node).
 - `predicate` must be from allowlist.
 - `evidence` must be a substring quote from the window text.
 - `utterance_ids` must refer to provided utterances.
+- Timestamps are extracted from the specific utterances referenced by each edge (not the window as a whole).
+- For discourse predicates (RESPONDS_TO, AGREES_WITH, DISAGREES_WITH, QUESTIONS), focus only on speaker-to-speaker connections with clear evidence.
 - Output must be JSON only (no markdown).
-
-For discourse windows:
 
 - Return only edges among speakers; no `nodes_new`.
 

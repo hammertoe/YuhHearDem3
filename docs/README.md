@@ -240,123 +240,115 @@ If speakers are incorrectly merged, adjust fuzzy matching threshold in `generate
 
 ## Knowledge Graph Extraction
 
-Build a knowledge graph from transcript data using spaCy for entity extraction and Google Gemini for relationship extraction.
+Extract knowledge graph entities and relationships from parliamentary transcripts using LLM-first approach with PostgreSQL backend.
 
 ### Features
 
-- **Entity Extraction**: Uses spaCy (en_core_web_md) to extract standard entities (PERSON, ORG, GPE, LAW, etc.)
-- **Relationship Extraction**: Uses Google Gemini to extract relationships between entities
-- **Date Normalization**: Automatically normalizes relative dates (e.g., "today", "last year") to absolute dates using video's upload date as anchor
-- **Interactive Visualization**: Generates HTML visualization using NetworkX and PyVis
-- **Structured Output**: Exports knowledge graph as JSON for further processing
-- **Speaker & Legislation Nodes**: Automatically adds speakers and legislation as graph nodes
+- **LLM-First Extraction**: Uses Google Gemini to directly extract entities and relationships in a single pass
+- **Semantic Edges**: Captures substantive relationships (AMENDS, GOVERNS, PROPOSES, etc.) and discourse relationships (RESPONDS_TO, AGREES_WITH, etc.)
+- **Concept Nodes**: Extracts abstract concepts, policies, and systems (not just named entities)
+- **Canonical IDs**: Stable hash-based node and edge IDs across runs
+- **Vector Context**: Uses pgvector similarity to retrieve relevant known nodes for each window
+- **Timestamp Accuracy**: Extracts timestamps from specific utterances referenced by each edge
+- **Provenance**: Every edge includes evidence quotes, utterance IDs, and timestamps
+
+### Architecture
+
+**Window-Based Extraction**:
+- Concept windows: 10 utterances with 6-utterance stride (40% overlap)
+- Single LLM pass: Extracts both conceptual and discourse relationships together
+- Context-aware: Top-K vector search provides relevant known nodes to LLM
+
+**Database Schema**:
+- `kg_nodes`: Canonical nodes with embeddings (speakers, legislation, concepts, orgs, places)
+- `kg_aliases`: Normalized alias index for entity linking
+- `kg_edges`: Canonical edges with provenance (evidence, utterance_ids, timestamps, confidence)
 
 ### Relationship Types
 
-The script extracts the following predefined relationships:
-- `MENTIONS`: Speaker A mentions Speaker B or an entity
-- `REFERENCES`: Speaker references a law, bill, or legislation
-- `AGREES_WITH`: Speaker expresses agreement with someone or something
-- `DISAGREES_WITH`: Speaker expresses disagreement with someone or something
-- `QUESTIONS`: Speaker asks a question to someone
-- `RESPONDS_TO`: Speaker responds to someone
-- `DISCUSSES`: Speaker discusses a topic
-- `ADVOCATES_FOR`: Speaker supports or promotes something
-- `CRITICIZES`: Speaker criticizes someone or something
-- `PROPOSES`: Speaker proposes an idea or legislation
-- `WORKS_WITH`: Collaborative relationship between entities
+**Conceptual Relationships** (11 predicates):
+- `AMENDS`: A legislation or policy amends another
+- `GOVERNS`: Something governs or regulates a domain
+- `MODERNIZES`: Updates or modernizes a system/process
+- `AIMS_TO_REDUCE`: Goal to reduce something
+- `REQUIRES_APPROVAL`: Needs approval from someone/something
+- `IMPLEMENTED_BY`: Something is implemented by an entity
+- `RESPONSIBLE_FOR`: Entity has responsibility
+- `ASSOCIATED_WITH`: General association
+- `CAUSES`: Causal relationship
+- `ADDRESSES`: Addresses a topic/problem
+- `PROPOSES`: Proposes legislation, policy, or idea
 
-### Date Normalization
-
-The script automatically normalizes relative date entities to absolute values using the video's upload date as an anchor point.
-
-**Examples of normalized dates:**
-- "today" → "2026-01-06" (using video upload date)
-- "last year" → "2025"
-- "last December" → "2025-12"
-- "next week" → "2026-01-13" (approximately)
-
-**Requirements:**
-- Valid `video_metadata.upload_date` in transcript JSON (format: "YYYYMMDD")
-- Dates must be within reasonable range (±100 years from current date)
-
-**Output format:**
-```json
-{
-  "id": "ent_abc123",
-  "text": "last year",
-  "type": "DATE",
-  "resolved_date": "2025",
-  "is_relative": true
-}
-```
-
-**Limitations:**
-- Failed resolutions are skipped silently
-- Ambiguous dates use most recent interpretation
-- Edge cases like "the 90s" or "Easter Monday" remain as textual labels
+**Discourse Relationships** (4 predicates):
+- `RESPONDS_TO`: Speaker responds to another speaker
+- `AGREES_WITH`: Speaker expresses agreement
+- `DISAGREES_WITH`: Speaker expresses disagreement
+- `QUESTIONS`: Speaker asks a question
 
 ### Usage
 
 ```bash
-# Basic usage
-python build_knowledge_graph.py
+# Extract KG from a single video
+python scripts/kg_extract_from_video.py --youtube-video-id "Syxyah7QIaM"
 
-# With custom files
-python build_knowledge_graph.py --input-file transcription_output.json --output-json my_kg.json --output-html my_kg.html
+# With custom window size and stride
+python scripts/kg_extract_from_video.py --youtube-video-id "Syxyah7QIaM" --window-size 15 --stride 10
 
-# Adjust batch size (number of transcript entries per progress update)
-python build_knowledge_graph.py --batch-size 20
+# Limit windows for testing
+python scripts/kg_extract_from_video.py --youtube-video-id "Syxyah7QIaM" --max-windows 10
+
+# With debug mode (save failed responses)
+python scripts/kg_extract_from_video.py --youtube-video-id "Syxyah7QIaM" --debug
 ```
 
 ### CLI Arguments
 
 | Argument | Type | Default | Description |
 |----------|--------|----------|-------------|
-| `--input-file` | str | transcription_output.json | Input transcript JSON file |
-| `--output-json` | str | knowledge_graph.json | Output JSON file for knowledge graph |
-| `--output-html` | str | knowledge_graph.html | Output HTML file for visualization |
-| `--gemini-api-key` | str | None | Gemini API key (uses GOOGLE_API_KEY env var if not set) |
-| `--batch-size` | int | 10 | Progress update frequency |
+| `--youtube-video-id` | str | Required | YouTube video ID to process |
+| `--window-size` | int | 10 | Number of utterances per window |
+| `--stride` | int | 6 | Utterances to advance between windows |
+| `--max-windows` | int | None | Maximum windows to process (for testing) |
+| `--run-id` | str | Auto-generated | KG run ID for traceability |
+| `--model` | str | gemini-2.5-flash | Gemini model to use |
+| `--top-k` | int | 25 | Top K candidate nodes to retrieve |
+| `--no-filter-short` | flag | False | Don't filter short utterances |
+| `--debug` | flag | False | Save failed responses to file |
+
+### Output Statistics
+
+After extraction, you'll see:
+```
+============================================================
+Summary
+============================================================
+Windows processed: 162
+  Successful: 158
+  Failed: 4
+New nodes: 1250
+Edges: 2340
+Links to known nodes: 890
+Run ID: 075d3cd3-92f4-40a6-874a-f76a02ce1776
+============================================================
+```
 
 ### Requirements
 
 ```bash
-pip install spacy spacy-llm networkx pyvis dateparser
-python -m spacy download en_core_web_md
+pip install google-genai psycopg[binary] pgvector numpy
 ```
 
-### Output Format
+Set environment variable:
+```bash
+export GOOGLE_API_KEY="your-api-key"
+```
 
-#### JSON Output
-```json
-{
-  "nodes": [
-    {
-      "id": "ent_abc123",
-      "text": "Hon Santia Bradshaw",
-      "type": "PERSON",
-      "speaker_context": ["s_hon_santia_bradshaw_1"],
-      "timestamps": ["00:36:00"],
-      "count": 15
-    },
-    {
-      "id": "ent_def456",
-      "text": "last year",
-      "type": "DATE",
-      "resolved_date": "2025",
-      "is_relative": true,
-      "speaker_context": ["s_hon_santia_bradshaw_1"],
-      "timestamps": ["00:37:00"],
-      "count": 5
-    }
-  ],
-  "edges": [
-    {
-      "source": "ent_abc123",
-      "target": "ent_def456",
-      "relationship": "PROPOSES",
-      "context": "...",
+### Database Setup
+
+Ensure PostgreSQL tables exist:
+- `kg_nodes`: id, label, type, aliases, embedding, created_at, updated_at
+- `kg_aliases`: alias_norm, alias_raw, node_id, type, source, confidence
+- `kg_edges`: id, source_id, predicate, target_id, youtube_video_id, earliest_timestamp_str, earliest_seconds, utterance_ids, evidence, speaker_ids, confidence, extractor_model, kg_run_id, created_at
       "speaker_id": "s_hon_santia_bradshaw_1",
       "timestamp": "00:36:00"
     }

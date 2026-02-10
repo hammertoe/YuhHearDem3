@@ -225,11 +225,15 @@ match err.code:
 - **Speaker IDs**: Format `s_<name>_<number>` (normalized, lowercase, underscore-separated)
 - **Legislation IDs**: Format `L_BILLNUMBER_<number>`
 
-### Knowledge Graph (build_knowledge_graph.py)
-- **spaCy model**: `en_core_web_md` for NER
-- **Entity IDs**: `ent_<hash>` using MD5 hash of `type:text`
-- **Relationship types**: Predefined list in `RELATION_TYPES`
-- **Date normalization**: Use `dateparser` with anchor date from video metadata
+### Knowledge Graph (kg_extractor.py)
+- **LLM-first approach**: Single pass extraction using Gemini, no NER pre-filtering
+- **Window-based extraction**: Concept windows (10 utterances, stride 6) with 40% overlap
+- **Node IDs**: Hash-based stable IDs: `kg_<hash(type:label)>[:12]`
+- **Edge IDs**: Hash-based: `kge_<hash(source|predicate|target|video|seconds|evidence)>[:12]`
+- **Predicates**: 15 predicates (11 conceptual + 4 discourse) extracted in single pass
+- **Timestamp accuracy**: Edges use timestamps from specific utterances referenced by each edge
+- **Vector context**: Top-K vector search provides relevant known nodes to LLM per window
+- **Node types**: `foaf:Person`, `schema:Legislation`, `schema:Organization`, `schema:Place`, `skos:Concept`
 
 ## Environment Setup
 ```bash
@@ -239,9 +243,6 @@ source venv/bin/activate  # or venv\Scripts\activate on Windows
 
 # Install all dependencies
 pip install -r requirements.txt
-
-# Download spaCy model
-python -m spacy download en_core_web_md
 
 # Set API key (Google AI Studio)
 export GOOGLE_API_KEY="your-api-key"
@@ -253,5 +254,5 @@ export GOOGLE_API_KEY="your-api-key"
 - **tenacity**: Retry logic
 - **yt-dlp**: Video metadata
 - **rapidfuzz**: Fuzzy string matching
-- **spacy**: Named entity recognition
-- **networkx/pyvis**: Graph visualization
+- **psycopg**: PostgreSQL client
+- **pgvector**: Vector similarity search

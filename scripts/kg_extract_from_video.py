@@ -20,7 +20,6 @@ from lib.knowledge_graph.window_builder import (
     DEFAULT_WINDOW_SIZE,
     WindowBuilder,
     ConceptWindow,
-    DiscourseWindow,
 )
 
 
@@ -31,13 +30,10 @@ def main():
         "--window-size",
         type=int,
         default=DEFAULT_WINDOW_SIZE,
-        help="Concept window size",
+        help="Window size",
     )
     parser.add_argument(
-        "--stride", type=int, default=DEFAULT_STRIDE, help="Concept window stride"
-    )
-    parser.add_argument(
-        "--context-size", type=int, default=3, help="Discourse window context size"
+        "--stride", type=int, default=DEFAULT_STRIDE, help="Window stride"
     )
     parser.add_argument(
         "--max-windows", type=int, help="Maximum windows to process (for testing)"
@@ -47,18 +43,7 @@ def main():
         "--model", default=DEFAULT_GEMINI_MODEL, help="Gemini model to use"
     )
     parser.add_argument(
-        "--predicates-file",
-        default=None,
-        help="Path to config JSON with concept_predicates/discourse_predicates",
-    )
-    parser.add_argument(
         "--top-k", type=int, default=25, help="Top K candidate nodes to retrieve"
-    )
-    parser.add_argument(
-        "--skip-concept", action="store_true", help="Skip concept extraction"
-    )
-    parser.add_argument(
-        "--skip-discourse", action="store_true", help="Skip discourse extraction"
     )
     parser.add_argument(
         "--no-filter-short",
@@ -85,12 +70,11 @@ def main():
                 pg_client,
                 embedding_client,
                 model=args.model,
-                predicates_file=args.predicates_file,
             )
             window_builder = WindowBuilder(pg_client, embedding_client)
 
             print(f"\nBuilding windows for video {youtube_video_id}...")
-            all_windows = window_builder.build_all_windows(
+            windows = window_builder.build_all_windows(
                 youtube_video_id,
                 window_size=args.window_size,
                 stride=args.stride,
@@ -98,84 +82,42 @@ def main():
                 filter_short=not args.no_filter_short,
             )
 
-            concept_windows = [
-                w for w in all_windows["concept"] if isinstance(w, ConceptWindow)
-            ]
-            discourse_windows = [
-                w for w in all_windows["discourse"] if isinstance(w, DiscourseWindow)
-            ]
+            concept_windows = [w for w in windows if isinstance(w, ConceptWindow)]
 
-            print(f"✅ Found {len(concept_windows)} concept windows")
-            print(f"✅ Found {len(discourse_windows)} discourse windows")
+            print(f"✅ Found {len(concept_windows)} windows")
 
             if args.max_windows:
                 concept_windows = concept_windows[: args.max_windows]
-                discourse_windows = discourse_windows[: args.max_windows]
-                print(
-                    f"🔧 Limited to {len(concept_windows)} concept windows and {len(discourse_windows)} discourse windows"
-                )
+                print(f"🔧 Limited to {len(concept_windows)} windows")
 
             all_results = []
 
-            if not args.skip_concept:
-                print(f"\n{'=' * 60}")
-                print("Processing concept windows...")
-                print(f"{'=' * 60}")
+            print(f"\n{'=' * 60}")
+            print("Processing windows...")
+            print(f"{'=' * 60}")
 
-                for i, window in enumerate(concept_windows, 1):
+            for i, window in enumerate(concept_windows, 1):
+                print(f"\n[{i}/{len(concept_windows)}] Window {window.window_index}")
+
+                result = extractor.extract_from_concept_window(
+                    window, youtube_video_id, top_k=args.top_k
+                )
+                all_results.append(result)
+
+                if result.parse_success:
                     print(
-                        f"\n[{i}/{len(concept_windows)}] Concept window {window.window_index}"
+                        f"  ✅ {len(result.nodes_new)} new nodes, {len(result.edges)} edges"
                     )
+                else:
+                    print(f"  ❌ Failed: {result.error}")
 
-                    result = extractor.extract_from_concept_window(
-                        window, youtube_video_id, top_k=args.top_k
-                    )
-                    all_results.append(result)
-
-                    if result.parse_success:
-                        print(
-                            f"  ✅ {len(result.nodes_new)} new nodes, {len(result.edges)} edges"
-                        )
-                    else:
-                        print(f"  ❌ Failed: {result.error}")
-
-                        if args.debug:
-                            debug_file = f"debug_concept_{i}.txt"
-                            with open(debug_file, "w") as f:
-                                f.write(f"Window text:\n{window.text}\n\n")
-                                f.write(f"Raw response:\n{result.raw_response}\n\n")
-                                f.write(f"Error:\n{result.error}\n")
-                            print(f"  🔧 Debug info saved to {debug_file}")
-
-            if not args.skip_discourse:
-                print(f"\n{'=' * 60}")
-                print("Processing discourse windows...")
-                print(f"{'=' * 60}")
-
-                for i, window in enumerate(discourse_windows, 1):
-                    print(
-                        f"\n[{i}/{len(discourse_windows)}] Discourse window {window.window_index}"
-                    )
-
-                    result = extractor.extract_from_discourse_window(
-                        window, youtube_video_id, top_k=args.top_k
-                    )
-                    all_results.append(result)
-
-                    if result.parse_success:
-                        print(
-                            f"  ✅ {len(result.nodes_new)} new nodes, {len(result.edges)} edges"
-                        )
-                    else:
-                        print(f"  ❌ Failed: {result.error}")
-
-                        if args.debug:
-                            debug_file = f"debug_discourse_{i}.txt"
-                            with open(debug_file, "w") as f:
-                                f.write(f"Window text:\n{window.text}\n\n")
-                                f.write(f"Raw response:\n{result.raw_response}\n\n")
-                                f.write(f"Error:\n{result.error}\n")
-                            print(f"  🔧 Debug info saved to {debug_file}")
+                    if args.debug:
+                        debug_file = f"debug_window_{i}.txt"
+                        with open(debug_file, "w") as f:
+                            f.write(f"Window text:\n{window.text}\n\n")
+                            f.write(f"Raw response:\n{result.raw_response}\n\n")
+                            f.write(f"Error:\n{result.error}\n")
+                        print(f"  🔧 Debug info saved to {debug_file}")
 
             print(f"\n{'=' * 60}")
             print("Canonicalizing and storing...")
