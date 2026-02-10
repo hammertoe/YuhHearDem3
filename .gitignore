@@ -23,10 +23,15 @@ frontend/dist/
 *~
 bak/
 debug_*.txt
-transcription_output.json
+transcription_output*.json
 knowledge_graph.json
 knowledge_graph.html
 kg_db.html
+my_transcription*.json
+
+# Data directories
+artifacts/
+data/
 
 # OS
 .DS_Store
