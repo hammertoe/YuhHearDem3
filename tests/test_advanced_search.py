@@ -1,6 +1,6 @@
 # Tests for advanced search features.
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from lib.advanced_search_features import AdvancedSearchFeatures
 

@@ -1,27 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from unittest.mock import Mock
 
 from lib.transcripts.ingestor import TranscriptIngestor
-
-
-@dataclass(frozen=True)
-class _Ent:
-    text: str
-    label_: str
-
-
-class _Doc:
-    def __init__(self, ents: list[_Ent]):
-        self.ents = ents
-
-
-class _NLP:
-    def __call__(self, text: str) -> _Doc:
-        if "Road Traffic" in text:
-            return _Doc([_Ent("Road Traffic", "LAW")])
-        return _Doc([])
 
 
 def test_transcript_ingestor_writes_core_tables() -> None:
@@ -33,7 +14,6 @@ def test_transcript_ingestor_writes_core_tables() -> None:
     ingestor = TranscriptIngestor(
         postgres=postgres,
         embedding_client=embeddings,
-        nlp=_NLP(),
     )
 
     transcript_data = {

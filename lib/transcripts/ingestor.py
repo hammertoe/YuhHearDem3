@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import spacy
-
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import generate_entity_id
@@ -34,11 +32,9 @@ class TranscriptIngestor:
         self,
         postgres: PostgresClient | None = None,
         embedding_client: GoogleEmbeddingClient | None = None,
-        nlp: Any | None = None,
     ):
         self.postgres = postgres or PostgresClient()
         self.embedding_client = embedding_client or GoogleEmbeddingClient()
-        self.nlp = nlp or spacy.load("en_core_web_md")
 
     def ingest_transcript_json(
         self,
@@ -279,14 +275,9 @@ class TranscriptIngestor:
         )
 
     def _extract_entities_from_text(self, text: str) -> list[tuple[str, str]]:
-        doc = self.nlp(text)
-        extracted: list[tuple[str, str]] = []
-        for ent in getattr(doc, "ents", []):
-            ent_text = str(getattr(ent, "text", "")).strip()
-            ent_type = str(getattr(ent, "label_", "")).strip() or "ENTITY"
-            if ent_text:
-                extracted.append((ent_text, ent_type))
-        return extracted
+        # Use LLM-based KG extraction instead of spacy NER
+        # This method now returns an empty list
+        return []
 
     def _upsert_entity(self, entity_id: str, text: str, entity_type: str) -> None:
         self.postgres.execute_update(

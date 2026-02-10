@@ -1,6 +1,6 @@
 # Tests for three-tier transcription processing.
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from lib.processors.three_tier_transcription import ThreeTierTranscriptionProcessor
 
@@ -45,7 +45,6 @@ def sample_transcripts():
 def test_processor_init():
     """Test processor initialization."""
     processor = ThreeTierTranscriptionProcessor()
-    assert processor.nlp is not None
     print("✅ Processor initialization works")
 
 

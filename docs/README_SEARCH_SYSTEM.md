@@ -36,17 +36,12 @@ Search Flow:
    ```
 
 3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   pip install python-dotenv==1.0.1
-   ```
+    ```bash
+    pip install -r requirements.txt
+    pip install python-dotenv==1.0.1
+    ```
 
-4. **Download spaCy model:**
-   ```bash
-   python -m spacy download en_core_web_md
-   ```
-
-5. **Migrate existing data:**
+4. **Migrate existing data:**
    ```bash
    python scripts/migrate_transcripts.py \
      --transcript-file transcription_output.json \

@@ -17,7 +17,6 @@ numpy>=1.26.0
 pandas>=2.2.0
 
 # NLP & ML
-spacy>=3.7.0
 rapidfuzz>=3.6.0
 
 # Retry Logic

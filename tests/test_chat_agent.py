@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import uuid
-from datetime import datetime
 
 import pytest
 
@@ -12,19 +9,6 @@ from lib.chat_agent import KGChatAgent
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import normalize_label
-
-
-@pytest.fixture
-def postgres_client() -> PostgresClient:
-    client = PostgresClient()
-    yield client
-    client.close()
-
-
-@pytest.fixture
-def embedding_client() -> GoogleEmbeddingClient:
-    client = GoogleEmbeddingClient()
-    yield client
 
 
 @pytest.fixture
@@ -37,6 +21,7 @@ def agent(
     )
 
 
+@pytest.mark.integration
 def test_create_thread(agent: KGChatAgent):
     """Test creating a new thread."""
     title = "Test funding thread"
@@ -53,6 +38,7 @@ def test_create_thread(agent: KGChatAgent):
     assert "state" in thread
 
 
+@pytest.mark.integration
 def test_create_thread_no_title(agent: KGChatAgent):
     """Test creating a thread without title."""
     thread_id = agent.create_thread(None)
@@ -64,6 +50,7 @@ def test_create_thread_no_title(agent: KGChatAgent):
     assert thread["title"] is None
 
 
+@pytest.mark.integration
 def test_retrieve_candidate_nodes_empty(agent: KGChatAgent):
     """Test candidate node retrieval with empty results."""
     candidates = agent._retrieve_candidate_nodes("query with no matches", {}, top_k=10)
@@ -72,6 +59,7 @@ def test_retrieve_candidate_nodes_empty(agent: KGChatAgent):
     assert len(candidates) == 0
 
 
+@pytest.mark.integration
 def test_retrieve_candidate_nodes_with_embeddings(
     postgres_client: PostgresClient,
     embedding_client: GoogleEmbeddingClient,
@@ -122,6 +110,7 @@ def test_retrieve_candidate_nodes_with_embeddings(
     )
 
 
+@pytest.mark.integration
 def test_retrieve_sentences_for_utterances(
     postgres_client: PostgresClient,
     agent: KGChatAgent,

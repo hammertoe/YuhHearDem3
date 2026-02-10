@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-import spacy
 
 from lib.processors.paragraph_splitter import (
     group_transcripts_into_paragraphs,
@@ -15,9 +14,6 @@ from lib.processors.paragraph_splitter import (
 
 class ThreeTierTranscriptionProcessor:
     """Process transcripts into three-tier format (paragraphs + sentences)."""
-
-    def __init__(self):
-        self.nlp = spacy.load("en_core_web_md")
 
     def process_transcript_to_three_tier(
         self,
@@ -94,71 +90,6 @@ class ThreeTierTranscriptionProcessor:
 
         speakers_list = list(speakers_map.values())
         return sorted(speakers_list, key=lambda x: x.get("first_appearance", ""))
-
-    def _extract_pos_tags(self, text: str) -> dict[str, str]:
-        """Extract POS tags from speaker name."""
-        doc = self.nlp(text)
-        pos_tags = [token.pos_ for token in doc]
-
-        title: str = ""
-        position: str = ""
-
-        for token, pos in zip(doc, pos_tags):
-            if pos == "PROPN":
-                if not title:
-                    title = token.text
-            elif pos == "VERB" and not position:
-                position = token.text
-
-        return {"title": title, "position": position}
-
-    def _infer_position_and_role(
-        self, name: str, pos_tags: dict[str, str]
-    ) -> dict[str, str]:
-        """Infer position and role from name and POS tags."""
-        position = pos_tags.get("position", "Unknown")
-        title = pos_tags.get("title", "")
-
-        role_map = {
-            "minister": "Minister",
-            "honorable": "Speaker",
-            "mr": "Member",
-            "mrs": "Member",
-            "dr": "Doctor",
-            "hon": "Member",
-            "clerk": "Clerk",
-            "reverend": "Clergy",
-            "speaker": "Speaker",
-            "chair": "Chairperson",
-            "member": "Member",
-            "president": "President",
-            "chairman": "Chairperson",
-        }
-
-        title_lower = title.lower() if title else ""
-
-        if title_lower:
-            if title_lower in ["minister", "president"]:
-                role = title_lower
-            elif title_lower in ["honorable", "mr", "mrs", "hon"]:
-                role = title_lower
-            elif "reverend" in title_lower:
-                role = "clergy"
-            elif "clerk" in title_lower:
-                role = "clerk"
-            elif "chairman" in title_lower or "chair" in name.lower():
-                role = "chairperson"
-            else:
-                role = "member"
-        else:
-            if "minister" in position.lower() or "secretary" in position.lower():
-                role = "minister"
-            elif "speaker" in position.lower() or "chair" in position.lower():
-                role = "speaker"
-            else:
-                role = "member"
-
-        return {"position": position, "role": role}
 
     def _extract_legislation(
         self, transcripts: list[dict[str, Any]]

@@ -560,9 +560,6 @@ cd YuhHearDem3
 
 # Install Python dependencies
 pip install -r requirements.txt
-
-# Download spaCy model
-python -m spacy download en_core_web_md
 ```
 
 ### Environment Setup
@@ -882,13 +879,7 @@ pip install psycopg[binary]
 pip install google-genai
 ```
 
-**3. spaCy model not found**
-```bash
-# Download spaCy model
-python -m spacy download en_core_web_md
-```
-
-**4. CORS errors in browser**
+**3. CORS errors in browser**
 ```bash
 # Ensure backend is running
 # Check CORS is enabled in api/search_api.py

@@ -94,7 +94,6 @@ def test_parse_bill_number_from_url():
 def test_entity_extractor_init():
     """Test entity extractor initialization."""
     extractor = BillEntityExtractor()
-    assert extractor.nlp is not None
     print("✅ Entity extractor initialization works")
 
 

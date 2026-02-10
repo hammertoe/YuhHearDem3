@@ -124,7 +124,6 @@ transcribe.py
 └── dotenv (environment)
 
 build_knowledge_graph.py
-├── spacy (NER)
 ├── networkx (graph operations)
 ├── pyvis (visualization)
 ├── google.genai (Gemini for relations)
@@ -150,7 +149,6 @@ lib/db/memgraph_client.py
 └── lib.utils.config
 
 lib/processors/three_tier_transcription.py
-├── spacy
 ├── lib.processors.paragraph_splitter
 └── lib.id_generators
 

@@ -7,26 +7,20 @@ import argparse
 import json
 from typing import Any
 
-import spacy
 from rapidfuzz import fuzz
 
 from lib.id_generators import generate_bill_id
 
 
 class BillEntityExtractor:
-    """Extract entities from bill text."""
-
-    def __init__(self):
-        self.nlp = spacy.load("en_core_web_md")
+    """Extract entities from bill text using regex patterns."""
 
     def extract_entities_from_bill(self, bill_data: dict[str, Any]) -> dict[str, Any]:
         """Extract entities from bill text."""
-        source_text = bill_data.get("source_text", "")
         description = bill_data.get("description", "")
+        source_text = bill_data.get("source_text", "")
 
         combined_text = f"{description} {source_text}"
-
-        doc = self.nlp(combined_text)
 
         entities = {
             "topics": [],
@@ -37,54 +31,151 @@ class BillEntityExtractor:
             "related_bills": [],
         }
 
-        for ent in doc.ents:
-            entity_type = ent.label_
-            entity_text = ent.text
-
-            if entity_type == "ORG":
-                entities["organizations"].append(
-                    {"text": entity_text, "start": ent.start_char, "end": ent.end_char}
-                )
-            elif entity_type == "PERSON":
-                entities["persons"].append(
-                    {"text": entity_text, "start": ent.start_char, "end": ent.end_char}
-                )
-            elif entity_type == "GPE" or entity_type == "LOC":
-                entities["locations"].append(
-                    {"text": entity_text, "start": ent.start_char, "end": ent.end_char}
-                )
-            elif entity_type == "DATE":
-                entities["dates"].append(
-                    {"text": entity_text, "start": ent.start_char, "end": ent.end_char}
-                )
-            elif entity_type == "LAW":
-                entities["related_bills"].append(
-                    {"text": entity_text, "start": ent.start_char, "end": ent.end_char}
-                )
-
-        entities["topics"] = self._extract_topics(doc, entities)
+        entities["organizations"] = self._extract_organizations(combined_text)
+        entities["persons"] = self._extract_persons(combined_text)
+        entities["locations"] = self._extract_locations(combined_text)
+        entities["dates"] = self._extract_dates(combined_text)
+        entities["related_bills"] = self._extract_related_bills(combined_text)
+        entities["topics"] = self._extract_topics(combined_text, entities)
 
         bill_data["extracted_entities"] = entities
         return bill_data
 
-    def _extract_topics(
-        self, doc: Any, entities: dict[str, list[dict[str, Any]]]
-    ) -> list[dict[str, str]]:
-        """Extract topics using noun chunks."""
-        topics = []
+    def _extract_organizations(self, text: str) -> list[dict[str, Any]]:
+        """Extract organization names using regex patterns."""
+        organizations = []
 
-        for chunk in doc.noun_chunks:
-            chunk_text = chunk.text
+        patterns = [
+            r"\b(?:Ministry|Department|Office|Agency|Commission|Authority|Council|Board)\s+of\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\b",
+            r"\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:Ministry|Department|Office|Agency|Commission|Authority|Council|Board)\b",
+            r"\b(?:The\s+)?[A-Z]{2,}(?:\s+[A-Z]{2,})*\b",
+        ]
 
-            if len(chunk_text) > 3 and len(chunk_text) < 50:
-                if not self._is_entity(chunk_text, entities):
-                    topics.append(
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                org_text = match.group(0).strip()
+                organizations.append(
+                    {
+                        "text": org_text,
+                        "start": match.start(),
+                        "end": match.end(),
+                    }
+                )
+
+        return organizations
+
+    def _extract_persons(self, text: str) -> list[dict[str, Any]]:
+        """Extract person names using regex patterns."""
+        persons = []
+
+        patterns = [
+            r"\b(?:Mr|Mrs|Ms|Dr|Hon|Prof)\.?\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\b",
+            r"\b[A-Z][a-zA-Z]+\s+[A-Z][a-zA-Z]+\b",
+        ]
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                person_text = match.group(0).strip()
+                persons.append(
+                    {
+                        "text": person_text,
+                        "start": match.start(),
+                        "end": match.end(),
+                    }
+                )
+
+        return persons
+
+    def _extract_locations(self, text: str) -> list[dict[str, Any]]:
+        """Extract locations using regex patterns."""
+        locations = []
+
+        patterns = [
+            r"\b(?:Jamaica|Kingston|Portmore|Spanish\s+Town|Montego\s+Bay|Mandeville|May\s+Pen|Ocho\s+Rios)\b",
+            r"\b(?:St\.|Saint\s+)(?:Andrew|Catherine|Thomas|Mary|Ann|James|Elizabeth|Mary)\b",
+        ]
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                loc_text = match.group(0).strip()
+                locations.append(
+                    {
+                        "text": loc_text,
+                        "start": match.start(),
+                        "end": match.end(),
+                    }
+                )
+
+        return locations
+
+    def _extract_dates(self, text: str) -> list[dict[str, Any]]:
+        """Extract dates using regex patterns."""
+        dates = []
+
+        patterns = [
+            r"\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b",
+            r"\b\d{4}-\d{2}-\d{2}\b",
+            r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s*\d{4}\b",
+        ]
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                date_text = match.group(0).strip()
+                dates.append(
+                    {
+                        "text": date_text,
+                        "start": match.start(),
+                        "end": match.end(),
+                    }
+                )
+
+        return dates
+
+    def _extract_related_bills(self, text: str) -> list[dict[str, Any]]:
+        """Extract related bill/act references."""
+        bills = []
+
+        patterns = [
+            r"\b(?:the\s+)?[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*)*\s+Act\b",
+            r"\b(?:the\s+)?[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*)*\s+Bill\b",
+        ]
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                bill_text = match.group(0).strip()
+                if bill_text.lower() not in {"this bill", "the bill", "a bill"}:
+                    bills.append(
                         {
-                            "text": chunk_text,
-                            "start": chunk.start_char,
-                            "end": chunk.end_char,
+                            "text": bill_text,
+                            "start": match.start(),
+                            "end": match.end(),
                         }
                     )
+
+        return bills
+
+    def _extract_topics(
+        self, text: str, entities: dict[str, list[dict[str, Any]]]
+    ) -> list[dict[str, str]]:
+        """Extract topics using noun phrases."""
+        topics = []
+
+        patterns = [
+            r"\b(?:[A-Z][a-z]+(?:\s+[a-z]+){0,3})\s+(?:Act|Bill|Law|Regulation|Policy|Program|Scheme|Fund|System|Authority|Commission)\b",
+        ]
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                topic_text = match.group(0).strip()
+                if len(topic_text) > 3 and len(topic_text) < 50:
+                    if not self._is_entity(topic_text, entities):
+                        topics.append(
+                            {
+                                "text": topic_text,
+                                "start": match.start(),
+                                "end": match.end(),
+                            }
+                        )
 
         return topics[:10]
 
