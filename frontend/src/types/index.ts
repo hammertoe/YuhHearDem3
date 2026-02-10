@@ -78,3 +78,90 @@ export interface TrendResult {
   };
   moving_average: TrendData[];
 }
+
+export interface ThreadMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  metadata: {
+    citations?: string[];
+    focus_node_ids?: string[];
+    retrieval_stats?: {
+      candidates: number;
+      edges: number;
+      sentences: number;
+    };
+  } | null;
+  created_at: string;
+}
+
+export interface Thread {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+  state: {
+    focus_node_ids?: string[];
+    focus_node_labels?: string[];
+    last_question?: string;
+  };
+  messages: ThreadMessage[];
+}
+
+export interface CreateThreadResponse {
+  thread_id: string;
+  title: string | null;
+  created_at: string;
+}
+
+export interface ChatCitation {
+  utterance_id: string;
+  youtube_video_id: string;
+  seconds_since_start: number;
+  timestamp_str: string;
+  speaker_id: string;
+  speaker_name: string;
+  text: string;
+  video_title: string | null;
+  video_date: string | null;
+}
+
+export interface ChatFocusNode {
+  id: string;
+  label: string;
+  type: string;
+}
+
+export interface ChatUsedEdge {
+  id: string;
+  source_id: string;
+  predicate: string;
+  predicate_raw: string | null;
+  target_id: string;
+  confidence: number | null;
+  evidence: string | null;
+  utterance_ids: string[];
+}
+
+export interface ChatMessageResponse {
+  thread_id: string;
+  assistant_message: ThreadMessage;
+  citations: ChatCitation[];
+  focus_nodes: ChatFocusNode[];
+  used_edges: ChatUsedEdge[];
+  debug: {
+    planner?: {
+      intent: string;
+      entities: string[];
+      predicates: string[];
+      node_types: string[];
+      followup_requires_focus: boolean;
+    };
+    retrieval?: {
+      candidates: number;
+      edges: number;
+      sentences: number;
+      fallback_used: boolean;
+    };
+  } | null;
+}

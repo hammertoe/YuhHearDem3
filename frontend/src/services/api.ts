@@ -1,5 +1,14 @@
 import axios from 'axios';
-import type { SearchResult, TrendResult, GraphNode, GraphEdge, Speaker } from '../types';
+import type {
+  SearchResult,
+  TrendResult,
+  GraphNode,
+  GraphEdge,
+  Speaker,
+  Thread,
+  CreateThreadResponse,
+  ChatMessageResponse
+} from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -55,6 +64,23 @@ export const searchApi = {
 
   async getSpeakerStats(speakerId: string): Promise<Speaker & { recent_contributions: SearchResult[] }> {
     const response = await api.get<Speaker & { recent_contributions: SearchResult[] }>(`/speakers/${speakerId}`);
+    return response.data;
+  }
+};
+
+export const chatApi = {
+  async createThread(title?: string): Promise<CreateThreadResponse> {
+    const response = await api.post<CreateThreadResponse>('/chat/threads', { title });
+    return response.data;
+  },
+
+  async getThread(threadId: string): Promise<Thread> {
+    const response = await api.get<Thread>(`/chat/threads/${threadId}`);
+    return response.data;
+  },
+
+  async sendMessage(threadId: string, content: string): Promise<ChatMessageResponse> {
+    const response = await api.post<ChatMessageResponse>(`/chat/threads/${threadId}/messages`, { content });
     return response.data;
   }
 };
