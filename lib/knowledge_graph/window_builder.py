@@ -190,7 +190,6 @@ class WindowBuilder:
         youtube_video_id: str,
         window_size: int = DEFAULT_WINDOW_SIZE,
         stride: int = DEFAULT_STRIDE,
-        context_size: int = 3,
         filter_short: bool = True,
     ) -> list[ConceptWindow]:
         """Build concept windows for a video."""

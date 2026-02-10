@@ -1,5 +1,7 @@
 """Script to extract knowledge graph from a single video."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
@@ -15,6 +17,7 @@ if _REPO_ROOT not in sys.path:
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.knowledge_graph.kg_extractor import DEFAULT_GEMINI_MODEL, KGExtractor
+from lib.knowledge_graph.base_kg_seeder import BaseKGSeeder
 from lib.knowledge_graph.window_builder import (
     DEFAULT_STRIDE,
     DEFAULT_WINDOW_SIZE,
@@ -66,6 +69,17 @@ def main():
     try:
         with PostgresClient() as pg_client:
             embedding_client = GoogleEmbeddingClient()
+
+            print("\nSeeding base knowledge graph...")
+            seeder = BaseKGSeeder(pg_client, embedding_client)
+            seed_counts = seeder.seed_all()
+            print(
+                "✅ Seeded base KG: "
+                f"speakers={seed_counts.get('speakers', 0)}, "
+                f"order_paper_items={seed_counts.get('order_paper_items', 0)}, "
+                f"bills={seed_counts.get('bills', 0)}"
+            )
+
             extractor = KGExtractor(
                 pg_client,
                 embedding_client,
@@ -78,7 +92,6 @@ def main():
                 youtube_video_id,
                 window_size=args.window_size,
                 stride=args.stride,
-                context_size=args.context_size,
                 filter_short=not args.no_filter_short,
             )
 
