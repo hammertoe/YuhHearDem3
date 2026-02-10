@@ -11,6 +11,7 @@ from lib.db.postgres_client import PostgresClient
 from lib.db.memgraph_client import MemgraphClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.advanced_search_features import AdvancedSearchFeatures
+from lib.chat_agent import KGChatAgent
 
 app = FastAPI(title="Parliamentary Search API")
 
@@ -104,10 +105,76 @@ class SpeakerStatsResponse(BaseModel):
     recent_contributions: list[dict[str, Any]]
 
 
+class CreateThreadResponse(BaseModel):
+    thread_id: str
+    title: str | None
+    created_at: str
+
+
+class ThreadMessage(BaseModel):
+    id: str
+    role: str
+    content: str
+    metadata: dict[str, Any] | None
+    created_at: str
+
+
+class GetThreadResponse(BaseModel):
+    id: str
+    title: str | None
+    created_at: str
+    updated_at: str
+    state: dict[str, Any]
+    messages: list[ThreadMessage]
+
+
+class ChatCitation(BaseModel):
+    utterance_id: str
+    youtube_video_id: str
+    seconds_since_start: int
+    timestamp_str: str
+    speaker_id: str
+    speaker_name: str
+    text: str
+    video_title: str | None
+    video_date: str | None
+
+
+class ChatFocusNode(BaseModel):
+    id: str
+    label: str
+    type: str
+
+
+class ChatUsedEdge(BaseModel):
+    id: str
+    source_id: str
+    predicate: str
+    predicate_raw: str | None
+    target_id: str
+    confidence: float | None
+    evidence: str | None
+    utterance_ids: list[str]
+
+
+class ChatMessageRequest(BaseModel):
+    content: str
+
+
+class ChatMessageResponse(BaseModel):
+    thread_id: str
+    assistant_message: ThreadMessage
+    citations: list[ChatCitation]
+    focus_nodes: list[ChatFocusNode]
+    used_edges: list[ChatUsedEdge]
+    debug: dict[str, Any] | None
+
+
 postgres: PostgresClient | None = None
 memgraph: MemgraphClient | None = None
 embedding_client: GoogleEmbeddingClient | None = None
 advanced_search: AdvancedSearchFeatures | None = None
+chat_agent: KGChatAgent | None = None
 
 
 def _get_postgres() -> PostgresClient:
@@ -130,15 +197,24 @@ def _get_advanced_search() -> AdvancedSearchFeatures:
     return advanced_search
 
 
+def _get_chat_agent() -> KGChatAgent:
+    assert chat_agent is not None
+    return chat_agent
+
+
 @app.on_event("startup")
 def _startup() -> None:
-    global postgres, memgraph, embedding_client, advanced_search
+    global postgres, memgraph, embedding_client, advanced_search, chat_agent
     postgres = PostgresClient()
     memgraph = MemgraphClient()
     embedding_client = GoogleEmbeddingClient()
     advanced_search = AdvancedSearchFeatures(
         postgres=postgres,
         memgraph=memgraph,
+        embedding_client=embedding_client,
+    )
+    chat_agent = KGChatAgent(
+        postgres_client=postgres,
         embedding_client=embedding_client,
     )
 
@@ -687,6 +763,110 @@ async def get_speaker_stats(speaker_id: str) -> SpeakerStatsResponse:
         )
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat/threads", response_model=CreateThreadResponse)
+async def create_thread(title: str | None = None):
+    """Create a new chat thread."""
+    try:
+        agent = _get_chat_agent()
+        thread_id = agent.create_thread(title)
+        from datetime import datetime
+
+        return CreateThreadResponse(
+            thread_id=thread_id,
+            title=title,
+            created_at=str(datetime.now()),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/chat/threads/{thread_id}", response_model=GetThreadResponse)
+async def get_thread(thread_id: str):
+    """Get thread metadata and messages."""
+    try:
+        agent = _get_chat_agent()
+        thread = agent.get_thread(thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail="Thread not found")
+
+        return GetThreadResponse(
+            id=thread["id"],
+            title=thread["title"],
+            created_at=thread["created_at"],
+            updated_at=thread["updated_at"],
+            state=thread["state"],
+            messages=[
+                ThreadMessage(
+                    id=m["id"],
+                    role=m["role"],
+                    content=m["content"],
+                    metadata=m.get("metadata"),
+                    created_at=m["created_at"],
+                )
+                for m in thread["messages"]
+            ],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat/threads/{thread_id}/messages", response_model=ChatMessageResponse)
+async def send_message(thread_id: str, request: ChatMessageRequest):
+    """Send a message to a thread and get assistant response."""
+    try:
+        agent = _get_chat_agent()
+        response = agent.process_message(thread_id, request.content)
+
+        return ChatMessageResponse(
+            thread_id=thread_id,
+            assistant_message=ThreadMessage(
+                id=response.assistant_message["id"],
+                role=response.assistant_message["role"],
+                content=response.assistant_message["content"],
+                created_at=response.assistant_message["created_at"],
+                metadata=None,
+            ),
+            citations=[
+                ChatCitation(
+                    utterance_id=c.utterance_id,
+                    youtube_video_id=c.youtube_video_id,
+                    seconds_since_start=c.seconds_since_start,
+                    timestamp_str=c.timestamp_str,
+                    speaker_id=c.speaker_id,
+                    speaker_name=c.speaker_name,
+                    text=c.text,
+                    video_title=c.video_title,
+                    video_date=c.video_date,
+                )
+                for c in response.citations
+            ],
+            focus_nodes=[
+                ChatFocusNode(id=n["id"], label=n["label"], type=n["type"])
+                for n in response.focus_nodes
+            ],
+            used_edges=[
+                ChatUsedEdge(
+                    id=e.id,
+                    source_id=e.source_id,
+                    predicate=e.predicate,
+                    predicate_raw=e.predicate_raw,
+                    target_id=e.target_id,
+                    confidence=e.confidence,
+                    evidence=e.evidence,
+                    utterance_ids=e.utterance_ids,
+                )
+                for e in response.used_edges
+            ],
+            debug=response.debug,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
