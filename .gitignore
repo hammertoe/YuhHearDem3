@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenv
+venv/
+.venv/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Local outputs / scratch
+*~
+bak/
+debug_*.txt
+transcription_output.json
+knowledge_graph.json
+knowledge_graph.html
+kg_db.html
+
+# OS
+.DS_Store

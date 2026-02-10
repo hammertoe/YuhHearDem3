@@ -1,0 +1,40 @@
+# Dependencies for Parliamentary Search System
+# Using flexible versions to avoid installation issues
+
+# Core
+psycopg[binary]>=3.1.0
+psycopg-pool>=3.2.0
+pymgclient
+
+# Google AI
+google-genai>=0.8.0
+
+# Data Processing
+numpy>=1.26.0
+pandas>=2.2.0
+
+# NLP & ML
+spacy>=3.7.0
+rapidfuzz>=3.6.0
+
+# Retry Logic
+tenacity>=8.2.0
+
+# Configuration
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+
+# Scraping
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+playwright>=1.41.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# Code Quality
+ruff>=0.15.0
+mypy>=1.19.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.30.0
