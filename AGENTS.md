@@ -235,6 +235,10 @@ match err.code:
 - **Vector context**: Top-K vector search provides relevant known nodes to LLM per window
 - **Node types**: `foaf:Person`, `schema:Legislation`, `schema:Organization`, `schema:Place`, `skos:Concept`
 
+### Clear KG Tables (scripts/clear_kg.py)
+- Use `python scripts/clear_kg.py --yes` to clear all KG tables for fresh extraction
+- Clears: `kg_edges`, `kg_aliases`, `kg_nodes` (in that order due to FK constraints)
+
 ## Environment Setup
 ```bash
 # Create virtual environment

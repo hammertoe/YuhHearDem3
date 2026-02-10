@@ -46,7 +46,7 @@ class ExtractedEdge:
     target_ref: str
     evidence: str
     utterance_ids: list[str]
-    earliest_timestamp: str
+    earliest_timestamp: str | None
     confidence: float
 
 
