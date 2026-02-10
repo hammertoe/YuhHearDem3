@@ -3,12 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from lib.id_generators import generate_kg_node_id
-from lib.knowledge_graph.kg_extractor import (
-    ExtractedEdge,
-    ExtractedNode,
-    ExtractionResult,
-    KGExtractor,
-)
+from lib.knowledge_graph.kg_store import canonicalize_and_store
 from lib.knowledge_graph.window_builder import ConceptWindow, Utterance
 
 
@@ -41,6 +36,14 @@ class _FakePostgres:
         if "FROM speakers" in query:
             return []
 
+        if "FROM kg_nodes" in query and "embedding IS NULL" in query:
+            node_ids = []
+            if params:
+                node_ids = params[0]
+            return [
+                (nid, f"label_for_{nid}") for nid in node_ids if nid in self.kg_nodes
+            ]
+
         if "FROM kg_nodes" in query and "WHERE id = ANY" in query:
             node_ids = []
             if params:
@@ -50,17 +53,9 @@ class _FakePostgres:
         return []
 
 
-def _make_extractor(fake_pg: _FakePostgres) -> KGExtractor:
-    extractor = KGExtractor.__new__(KGExtractor)
-    extractor.postgres = fake_pg
-    extractor.embedding = _FakeEmbeddingClient()
-    extractor._embed_new_nodes = lambda _node_ids: None  # type: ignore[method-assign]
-    return extractor
-
-
 def test_canonicalize_should_skip_edge_when_speaker_ref_not_in_window() -> None:
     pg = _FakePostgres()
-    extractor = _make_extractor(pg)
+    embedding = _FakeEmbeddingClient()
 
     window = ConceptWindow(
         utterances=[
@@ -75,27 +70,33 @@ def test_canonicalize_should_skip_edge_when_speaker_ref_not_in_window() -> None:
         window_index=0,
     )
 
-    result = ExtractionResult(
-        window=window,
-        nodes_new=[],
-        edges=[
-            ExtractedEdge(
-                source_ref="s_fake_1",
-                predicate="QUESTIONS",
-                target_ref="s_real_1",
-                evidence="Hello world",
-                utterance_ids=["video1:1"],
-                earliest_timestamp="0:00:01",
-                earliest_seconds=1,
-                confidence=0.5,
-            )
+    result_tuple = (
+        window,
+        [],
+        [
+            {
+                "source_ref": "s_fake_1",
+                "predicate": "QUESTIONS",
+                "target_ref": "s_real_1",
+                "evidence": "Hello world",
+                "utterance_ids": ["video1:1"],
+                "earliest_timestamp": "0:00:01",
+                "earliest_seconds": 1,
+                "confidence": 0.5,
+            }
         ],
-        raw_response="{}",
-        parse_success=True,
+        "{}",
+        True,
+        None,
     )
 
-    stats = extractor.canonicalize_and_store(
-        [result], youtube_video_id="video1", kg_run_id="run1", extractor_model="m"
+    stats = canonicalize_and_store(
+        postgres=pg,
+        embedding=embedding,
+        results=[result_tuple],
+        youtube_video_id="video1",
+        kg_run_id="run1",
+        extractor_model="m",
     )
 
     assert stats["edges"] == 0
@@ -105,7 +106,7 @@ def test_canonicalize_should_skip_edge_when_speaker_ref_not_in_window() -> None:
 
 def test_canonicalize_should_prefix_bare_speaker_id_and_store_edge() -> None:
     pg = _FakePostgres()
-    extractor = _make_extractor(pg)
+    embedding = _FakeEmbeddingClient()
 
     window = ConceptWindow(
         utterances=[
@@ -120,34 +121,40 @@ def test_canonicalize_should_prefix_bare_speaker_id_and_store_edge() -> None:
         window_index=0,
     )
 
-    result = ExtractionResult(
-        window=window,
-        nodes_new=[
-            ExtractedNode(
-                temp_id="n1",
-                type="skos:Concept",
-                label="Test Concept",
-                aliases=[],
-            )
+    result_tuple = (
+        window,
+        [
+            {
+                "temp_id": "n1",
+                "type": "skos:Concept",
+                "label": "Test Concept",
+                "aliases": [],
+            }
         ],
-        edges=[
-            ExtractedEdge(
-                source_ref="s_real_1",
-                predicate="PROPOSES",
-                target_ref="n1",
-                evidence="Hello world",
-                utterance_ids=["video1:1"],
-                earliest_timestamp="0:00:01",
-                earliest_seconds=1,
-                confidence=0.8,
-            )
+        [
+            {
+                "source_ref": "s_real_1",
+                "predicate": "PROPOSES",
+                "target_ref": "n1",
+                "evidence": "Hello world",
+                "utterance_ids": ["video1:1"],
+                "earliest_timestamp": "0:00:01",
+                "earliest_seconds": 1,
+                "confidence": 0.8,
+            }
         ],
-        raw_response="{}",
-        parse_success=True,
+        "{}",
+        True,
+        None,
     )
 
-    stats = extractor.canonicalize_and_store(
-        [result], youtube_video_id="video1", kg_run_id="run1", extractor_model="m"
+    stats = canonicalize_and_store(
+        postgres=pg,
+        embedding=embedding,
+        results=[result_tuple],
+        youtube_video_id="video1",
+        kg_run_id="run1",
+        extractor_model="m",
     )
 
     assert stats["edges"] == 1

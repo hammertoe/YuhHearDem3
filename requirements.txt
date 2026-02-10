@@ -9,6 +9,9 @@ pymgclient
 # Google AI
 google-genai>=0.8.0
 
+# Cerebras
+cerebras-cloud-sdk>=0.7.0
+
 # Data Processing
 numpy>=1.26.0
 pandas>=2.2.0

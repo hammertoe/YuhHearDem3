@@ -9,6 +9,9 @@ import os
 import sys
 import uuid
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(__file__))
 if _REPO_ROOT not in sys.path:
@@ -16,7 +19,8 @@ if _REPO_ROOT not in sys.path:
 
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
-from lib.knowledge_graph.kg_extractor import DEFAULT_GEMINI_MODEL, KGExtractor
+from lib.knowledge_graph.oss_kg_extractor import OssKGExtractor, DEFAULT_MODEL
+from lib.knowledge_graph.kg_store import canonicalize_and_store
 from lib.knowledge_graph.base_kg_seeder import BaseKGSeeder
 from lib.knowledge_graph.window_builder import (
     DEFAULT_STRIDE,
@@ -27,6 +31,16 @@ from lib.knowledge_graph.window_builder import (
 
 
 def main():
+    print("=" * 60)
+    print("CEREBRAS KG EXTRACTION CONFIGURATION")
+    print("=" * 60)
+    print(f"Model: {DEFAULT_MODEL}")
+    print("Two-pass: always")
+    print("Reasoning effort: medium")
+    print("Reasoning format: hidden")
+    print("Max completion tokens: 16384")
+    print("=" * 60)
+
     parser = argparse.ArgumentParser(description="Extract knowledge graph from a video")
     parser.add_argument("--youtube-video-id", required=True, help="YouTube video ID")
     parser.add_argument(
@@ -43,9 +57,6 @@ def main():
     )
     parser.add_argument("--run-id", help="KG run ID (auto-generated if not provided)")
     parser.add_argument(
-        "--model", default=DEFAULT_GEMINI_MODEL, help="Gemini model to use"
-    )
-    parser.add_argument(
         "--top-k", type=int, default=25, help="Top K candidate nodes to retrieve"
     )
     parser.add_argument(
@@ -61,7 +72,7 @@ def main():
     run_id = args.run_id or str(uuid.uuid4())
     youtube_video_id = args.youtube_video_id
 
-    print("=" * 60)
+    print()
     print(f"KG Extraction: {youtube_video_id}")
     print(f"Run ID: {run_id}")
     print("=" * 60)
@@ -80,10 +91,9 @@ def main():
                 f"bills={seed_counts.get('bills', 0)}"
             )
 
-            extractor = KGExtractor(
+            extractor = OssKGExtractor(
                 pg_client,
                 embedding_client,
-                model=args.model,
             )
             window_builder = WindowBuilder(pg_client, embedding_client)
 
@@ -121,6 +131,14 @@ def main():
                     print(
                         f"  ✅ {len(result.nodes_new)} new nodes, {len(result.edges)} edges"
                     )
+                    if result.pass1_elapsed_s is not None:
+                        print(
+                            f"     Pass 1: {result.pass1_elapsed_s:.2f}s ({result.pass1_edge_count} edges, {result.pass1_violations_count} violations)"
+                        )
+                    if result.pass2_elapsed_s is not None:
+                        print(
+                            f"     Pass 2: {result.pass2_elapsed_s:.2f}s ({result.pass2_trigger})"
+                        )
                 else:
                     print(f"  ❌ Failed: {result.error}")
 
@@ -128,7 +146,25 @@ def main():
                         debug_file = f"debug_window_{i}.txt"
                         with open(debug_file, "w") as f:
                             f.write(f"Window text:\n{window.text}\n\n")
-                            f.write(f"Raw response:\n{result.raw_response}\n\n")
+                            if result.prompt_pass1:
+                                f.write(f"Pass 1 prompt:\n{result.prompt_pass1}\n\n")
+                            f.write(
+                                f"Raw response pass 1:\n{result.raw_response_pass1}\n\n"
+                            )
+                            if result.reasoning_pass1:
+                                f.write(
+                                    f"Reasoning pass 1:\n{result.reasoning_pass1}\n\n"
+                                )
+                            if result.prompt_pass2:
+                                f.write(f"Pass 2 prompt:\n{result.prompt_pass2}\n\n")
+                            if result.raw_response_pass2:
+                                f.write(
+                                    f"Raw response pass 2:\n{result.raw_response_pass2}\n\n"
+                                )
+                            if result.reasoning_pass2:
+                                f.write(
+                                    f"Reasoning pass 2:\n{result.reasoning_pass2}\n\n"
+                                )
                             f.write(f"Error:\n{result.error}\n")
                         print(f"  🔧 Debug info saved to {debug_file}")
 
@@ -136,8 +172,25 @@ def main():
             print("Canonicalizing and storing...")
             print(f"{'=' * 60}")
 
-            stats = extractor.canonicalize_and_store(
-                all_results, youtube_video_id, run_id, args.model
+            results_for_store = [
+                (
+                    r.window,
+                    r.nodes_new,
+                    r.edges,
+                    r.raw_response,
+                    r.parse_success,
+                    r.error,
+                )
+                for r in all_results
+            ]
+
+            stats = canonicalize_and_store(
+                postgres=pg_client,
+                embedding=embedding_client,
+                results=results_for_store,
+                youtube_video_id=youtube_video_id,
+                kg_run_id=run_id,
+                extractor_model=DEFAULT_MODEL,
             )
 
             print(f"\n{'=' * 60}")
@@ -149,6 +202,14 @@ def main():
             print(f"New nodes: {stats['new_nodes']}")
             print(f"Edges: {stats['edges']}")
             print(f"Links to known nodes: {stats['links_to_known']}")
+            if stats["edges_skipped_invalid_speaker_ref"] > 0:
+                print(
+                    f"Edges skipped (invalid speaker ref): {stats['edges_skipped_invalid_speaker_ref']}"
+                )
+            if stats["edges_skipped_missing_nodes"] > 0:
+                print(
+                    f"Edges skipped (missing nodes): {stats['edges_skipped_missing_nodes']}"
+                )
             print(f"Run ID: {run_id}")
             print("=" * 60)
 
