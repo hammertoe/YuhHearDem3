@@ -4,7 +4,6 @@ import pytest
 
 from lib.knowledge_graph.window_builder import (
     ConceptWindow,
-    DiscourseWindow,
     Utterance,
     Window,
     WindowBuilder,
@@ -154,21 +153,6 @@ def test_concept_window_creation():
     assert window.window_index == 0
 
 
-def test_discourse_window_creation():
-    """Test DiscourseWindow creation."""
-    window = DiscourseWindow(
-        utterances=[],
-        transition_from="speaker_a",
-        transition_to="speaker_b",
-        window_index=0,
-    )
-
-    assert window.window_type == "discourse"
-    assert window.transition_from == "speaker_a"
-    assert window.transition_to == "speaker_b"
-    assert window.window_index == 0
-
-
 def test_build_concept_windows(mock_postgres, sample_utterances):
     """Test building concept windows."""
     builder = WindowBuilder(mock_postgres)
@@ -221,49 +205,20 @@ def test_build_concept_windows_with_filter(mock_postgres):
     assert len(windows) == 0
 
 
-def test_build_discourse_windows(mock_postgres, sample_utterances):
-    """Test building discourse windows."""
-    builder = WindowBuilder(mock_postgres)
-
-    windows = builder.build_discourse_windows(
-        sample_utterances,
-        context_size=1,
-    )
-
-    transitions = [
-        ("speaker_a", "speaker_b"),
-        ("speaker_b", "speaker_a"),
-    ]
-
-    assert len(windows) == 2
-    assert all(isinstance(w, DiscourseWindow) for w in windows)
-
-    for i, window in enumerate(windows):
-        assert window.transition_from == transitions[i][0]
-        assert window.transition_to == transitions[i][1]
-
-
 def test_build_all_windows(mock_postgres, sample_utterances):
     """Test building all windows."""
     mock_postgres.set_utterances(sample_utterances)
     builder = WindowBuilder(mock_postgres)
 
-    all_windows = builder.build_all_windows(
+    windows = builder.build_all_windows(
         "video1",
         window_size=3,
         stride=2,
-        context_size=1,
         filter_short=False,
     )
 
-    assert "concept" in all_windows
-    assert "discourse" in all_windows
-
-    concept_windows = all_windows["concept"]
-    discourse_windows = all_windows["discourse"]
-
-    assert len(concept_windows) > 0
-    assert len(discourse_windows) > 0
+    assert len(windows) > 0
+    assert all(isinstance(w, ConceptWindow) for w in windows)
 
 
 def test_format_known_nodes():

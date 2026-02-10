@@ -4,6 +4,9 @@ import os
 
 import pytest
 
+from lib.db.postgres_client import PostgresClient
+from lib.embeddings.google_client import GoogleEmbeddingClient
+
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
@@ -39,3 +42,18 @@ def pytest_collection_modifyitems(
     for item in items:
         if "integration" in item.keywords:
             item.add_marker(skip_marker)
+
+
+@pytest.fixture
+def postgres_client():
+    """Create a PostgreSQL client for testing."""
+    client = PostgresClient()
+    yield client
+    client.close()
+
+
+@pytest.fixture
+def embedding_client():
+    """Create a Google embedding client for testing."""
+    client = GoogleEmbeddingClient()
+    yield client
