@@ -39,7 +39,7 @@ YuhHearDem3 is a parliamentary transcription and search system that processes vi
 | File | Lines | Purpose |
 |------|-------|---------|
 | `transcribe.py` | 938 | Main video transcription script - processes videos in segments |
-| `build_knowledge_graph.py` | 686 | Builds knowledge graphs from transcripts using spaCy + Gemini |
+| `build_knowledge_graph.py` | 686 | Builds knowledge graphs from transcripts using Gemini LLM |
 | `api/search_api.py` | 580 | FastAPI REST API for hybrid search |
 
 ### Library Modules
@@ -57,7 +57,7 @@ YuhHearDem3 is a parliamentary transcription and search system that processes vi
 |------|-------|---------|
 | `three_tier_transcription.py` | 213 | Groups transcripts into paragraphs/sentences |
 | `paragraph_splitter.py` | 111 | Groups sentences by speaker into paragraphs |
-| `bill_entity_extractor.py` | 222 | Extracts entities from bill text using spaCy |
+| `bill_entity_extractor.py` | 222 | Extracts entities from bill text using regex patterns |
 
 #### Scraping Layer (`lib/scraping/`)
 
@@ -234,9 +234,9 @@ lib/advanced_search_features.py
 - **Fix**: Use parameterized queries
 
 #### 9. Resource Management
-- **Location**: `build_knowledge_graph.py:118` - Loads spaCy model on every instance
-- **Impact**: Medium - slow initialization
-- **Fix**: Use singleton pattern or cache model
+- **Location**: `build_knowledge_graph.py` - Uses LLM for entity extraction
+- **Impact**: Medium - slower initialization due to LLM calls
+- **Fix**: Cache LLM responses where possible
 
 #### 10. Documentation Gaps
 - **Location**: Many functions lack docstrings
@@ -306,7 +306,7 @@ lib/advanced_search_features.py
 2. Add comprehensive docstrings
 3. Implement proper logging (remove print statements)
 4. Add database connection pooling configuration
-5. Cache spaCy model loading
+5. Cache LLM model responses
 
 ### Low Priority
 1. Standardize on modern Python type hints

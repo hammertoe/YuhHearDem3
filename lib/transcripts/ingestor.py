@@ -275,8 +275,6 @@ class TranscriptIngestor:
         )
 
     def _extract_entities_from_text(self, text: str) -> list[tuple[str, str]]:
-        # Use LLM-based KG extraction instead of spacy NER
-        # This method now returns an empty list
         return []
 
     def _upsert_entity(self, entity_id: str, text: str, entity_type: str) -> None:

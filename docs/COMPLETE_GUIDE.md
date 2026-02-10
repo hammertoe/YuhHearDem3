@@ -64,7 +64,7 @@ A hybrid vector/graph search system for parliamentary discussions, built over 5 
 - 10 bill categories (Transport, Health, Finance, etc.)
 
 **Entity Extraction** (`lib/processors/bill_entity_extractor.py`):
-- spaCy NER with 10 categories
+- Regex-based entity extraction with 10 categories
 - Entities: Organizations, Persons, Locations, Topics, Related Bills
 - Keyword generation (up to 10 per bill)
 
@@ -74,7 +74,7 @@ A hybrid vector/graph search system for parliamentary discussions, built over 5 
 
 **Features**:
 - Scraping with rate limiting
-- Entity extraction with spaCy
+- Entity extraction with regex patterns
 - Keyword generation
 - Graph relationships (Bill → Org, Bill → Topic, etc.)
 
@@ -185,7 +185,7 @@ YuhHearDem3/
 │   ├── processors/
 │   │   ├── __init__.py
 │   │   ├── paragraph_splitter.py          # Group sentences by speaker
-│   │   ├── bill_entity_extractor.py       # NER for bills
+│   │   ├── bill_entity_extractor.py       # Entity extraction for bills
 │   │   └── three_tier_transcription.py  # Three-tier output
 │   │
 │   ├── scraping/
@@ -253,7 +253,6 @@ YuhHearDem3/
 - **Database**: PostgreSQL 16 with pg_vector
 - **Graph DB**: Memgraph (Neo4j Bolt compatible)
 - **Embeddings**: Google embedding-001 (768-dim)
-- **NLP**: spaCy 3.7.5 with en_core_web_md
 - **Retry**: tenacity 8.2.3
 - **Scraping**: BeautifulSoup4, requests, playwright
 - **Fuzzy Matching**: rapidfuzz 3.6.2

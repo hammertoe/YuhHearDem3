@@ -20,7 +20,7 @@
 
 The existing `build_knowledge_graph.py` is NER-first:
 
-- spaCy NER produces mostly named entities (`PERSON`/`ORG`/`GPE`/`DATE`/etc.)
+- Rule-based entity extraction produces mostly named entities (`PERSON`/`ORG`/`GPE`/`DATE`/etc.)
 - Gemini is asked to label relationships *only among those entities*
 - This misses the main conceptual graph nodes we actually care about:
   - regimes/systems/policies/problems/goals/processes (not reliably named entities)

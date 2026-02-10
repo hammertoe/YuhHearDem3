@@ -211,7 +211,6 @@ python scripts/cron_transcription.py --add "VIDEO_ID"
 - PostgreSQL 16 + pg_vector
 - Memgraph
 - Google AI embedding-001 (768-dim)
-- spaCy 3.7.5
 - Uvicorn 0.30.1
 
 ### Frontend

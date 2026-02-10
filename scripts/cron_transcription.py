@@ -1,4 +1,5 @@
 """Cron job script for periodic transcript ingestion."""
+
 import argparse
 import json
 from datetime import datetime, timedelta
@@ -8,7 +9,7 @@ import subprocess
 import sys
 
 from lib.processors.three_tier_transcription_processor import (
-    ThreeTierTranscriptionProcessor
+    ThreeTierTranscriptionProcessor,
 )
 from lib.id_generators import parse_timestamp_to_seconds
 
@@ -55,21 +56,23 @@ class CronJobManager:
         video_id: str,
         video_title: str,
         segment_minutes: int = 30,
-        max_segments: Optional[int] = None
+        max_segments: Optional[int] = None,
     ) -> bool:
         """Process a single video."""
-        print(f"\n{'='* 80}")
+        print(f"\n{'=' * 80}")
         print(f"Processing: {video_id}")
         print(f"Title: {video_title}")
-        print(f"{'='* 80}")
+        print(f"{'=' * 80}")
 
         output_file = f"transcription_output_{video_id}.json"
 
         cmd = [
             "python",
             self.transcribe_script,
-            "--output-file", output_file,
-            "--segment-minutes", str(segment_minutes)
+            "--output-file",
+            output_file,
+            "--segment-minutes",
+            str(segment_minutes),
         ]
 
         if max_segments:
@@ -77,9 +80,7 @@ class CronJobManager:
 
         try:
             result = subprocess.run(
-                cmd,
-                check=True,
-                timeout=timedelta(hours=4).total_seconds()
+                cmd, check=True, timeout=timedelta(hours=4).total_seconds()
             )
 
             if result.returncode == 0:
@@ -120,20 +121,17 @@ class CronJobManager:
                 video_id,
                 video_title,
                 segment_minutes=video_info.get("segment_minutes", 30),
-                max_segments=video_info.get("max_segments", None)
+                max_segments=video_info.get("max_segments", None),
             )
 
-            results.append({
-                "video_id": video_id,
-                "success": success
-            })
+            results.append({"video_id": video_id, "success": success})
 
         successful = sum(1 for r in results if r["success"])
         failed = len(results) - successful
 
-        print(f"\n{'='* 80}")
+        print(f"\n{'=' * 80}")
         print(f"Results: {successful} succeeded, {failed} failed")
-        print(f"{'='* 80}")
+        print(f"{'=' * 80}")
 
         timestamp = datetime.now().isoformat()
 
@@ -159,7 +157,7 @@ class CronJobManager:
         video_title: str,
         segment_minutes: int = 30,
         max_segments: Optional[int] = None,
-        auto_process: bool = False
+        auto_process: bool = False,
     ) -> None:
         """Add a video to the watchlist."""
         watchlist = self.load_watchlist()
@@ -175,7 +173,7 @@ class CronJobManager:
             "auto_process": auto_process,
             "added_at": datetime.now().isoformat(),
             "status": "pending",
-            "last_processed": None
+            "last_processed": None,
         }
 
         self.save_watchlist(watchlist)
@@ -207,7 +205,7 @@ class CronJobManager:
                 "pending": "⏳",
                 "processing": "⏳",
                 "processed": "✅",
-                "failed": "❌"
+                "failed": "❌",
             }
 
             print(f"\n{status_icon[status]} {video_id}")
@@ -217,11 +215,7 @@ class CronJobManager:
 
         print("=" * 80)
 
-    def update_watchlist_status(
-        self,
-        video_id: str,
-        status: str
-    ) -> None:
+    def update_watchlist_status(self, video_id: str, status: str) -> None:
         """Update video status in watchlist."""
         watchlist = self.load_watchlist()
 
@@ -232,7 +226,9 @@ class CronJobManager:
             watchlist["videos"][video_id]["status"] = status
 
             if status == "processed":
-                watchlist["videos"][video_id]["last_processed"] = datetime.now().isoformat()
+                watchlist["videos"][video_id]["last_processed"] = (
+                    datetime.now().isoformat()
+                )
 
         self.save_watchlist(watchlist)
 
@@ -258,43 +254,38 @@ def main():
         "--add-video",
         nargs=3,
         metavar=("VIDEO_ID", "TITLE", "SEGMENT_MINUTES"),
-        help="Add video to watchlist (ID title segment_minutes)"
+        help="Add video to watchlist (ID title segment_minutes)",
     )
     parser.add_argument(
         "--auto-process",
         action="store_true",
-        help="Enable auto-processing for added video"
+        help="Enable auto-processing for added video",
     )
     parser.add_argument(
-        "--max-segments",
-        type=int,
-        help="Max segments for video processing"
+        "--max-segments", type=int, help="Max segments for video processing"
     )
     parser.add_argument(
-        "--list",
-        action="store_true",
-        help="List all videos in watchlist"
+        "--list", action="store_true", help="List all videos in watchlist"
     )
     parser.add_argument(
         "--process",
         action="store_true",
-        help="Run scheduled ingestion for all pending videos"
+        help="Run scheduled ingestion for all pending videos",
     )
     parser.add_argument(
         "--watch-file",
         default=".transcription_watchlist.json",
-        help="Path to watchlist file"
+        help="Path to watchlist file",
     )
     parser.add_argument(
         "--status",
         nargs=2,
         metavar=("VIDEO_ID", "STATUS"),
         choices=["pending", "processing", "processed", "failed"],
-        help="Update video status"
+        help="Update video status",
     )
     parser.add_argument(
-        "--remove",
-        help="Remove video from watchlist (requires --video-id)"
+        "--remove", help="Remove video from watchlist (requires --video-id)"
     )
 
     args = parser.parse_args()
@@ -312,7 +303,7 @@ def main():
             title,
             segment_minutes,
             max_segments=args.max_segments,
-            auto_process=args.auto_process
+            auto_process=args.auto_process,
         )
 
     elif args.list:
@@ -326,14 +317,7 @@ def main():
         manager.update_watchlist_status(args.status[0], args.status[1])
 
     elif args.remove:
-        if not args.add_video:
-            print("Error: --remove requires --video-id")
-            sys.exit(1)
-
-        manager.remove_from_watchlist(args.add_video[0])
-        else:
-            print("Error: No video ID provided")
-            sys.exit(1)
+        manager.remove_from_watchlist(args.remove)
     else:
         parser.print_help()
 
