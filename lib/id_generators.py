@@ -45,12 +45,21 @@ def generate_bill_id(bill_number: str, existing_ids: set[str] | None = None) -> 
     normalized = re.sub(r"\s+", "_", bill_number.upper().strip())
     normalized = re.sub(r"[^A-Z0-9_]", "", normalized)
     base_id = f"L_{normalized}"
-
     counter = 1
     while f"{base_id}_{counter}" in existing_ids:
         counter += 1
 
     return f"{base_id}_{counter}"
+
+
+def generate_order_paper_id(
+    chamber_code: str, session_date, order_paper_number: str
+) -> str:
+    """Generate order paper ID: op_{chamber_code}_{YYYYMMDD}_{order_paper_number}"""
+    date_str = session_date.strftime("%Y%m%d")
+    normalized_number = re.sub(r"[^A-Za-z0-9_]", "", order_paper_number)
+    normalized_number = re.sub(r"\s+", "_", normalized_number).strip("_")
+    return f"op_{chamber_code}_{date_str}_{normalized_number}"
 
 
 def generate_entity_id(text: str, entity_type: str) -> str:

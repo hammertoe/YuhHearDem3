@@ -4,10 +4,28 @@ import json
 import os
 import re
 from collections.abc import Callable
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
-# Load environment variables from .env file
+import pydantic
+import tenacity
+import yt_dlp
 from dotenv import load_dotenv
+from google import genai
+from google.genai.errors import ClientError
+from google.genai.types import (
+    FileData,
+    FinishReason,
+    GenerateContentConfig,
+    GenerateContentResponse,
+    Part,
+    VideoMetadata,
+)
+from google.genai.types import MediaResolution, ThinkingConfig
+from rapidfuzz import fuzz
+
+from lib.db.postgres_client import PostgresClient
+
 
 load_dotenv()
 
@@ -21,26 +39,6 @@ load_dotenv()
 #   export GOOGLE_CLOUD_LOCATION="your-location"
 #
 # Get a Gemini API key from: https://aistudio.google.com/app/apikey
-from datetime import timedelta
-
-import pydantic
-import tenacity
-from google import genai
-from google.genai.errors import ClientError
-from google.genai.types import (
-    FileData,
-    FinishReason,
-    GenerateContentConfig,
-    GenerateContentResponse,
-    Part,
-    VideoMetadata,
-)
-from google.genai.types import MediaResolution, ThinkingConfig
-
-from dataclasses import dataclass
-
-import yt_dlp
-from rapidfuzz import fuzz
 
 
 def check_environment() -> bool:
@@ -551,6 +549,7 @@ def get_video_transcription(
     prompt: str | None = None,
     model: Model | None = None,
     order_file: str | None = None,
+    order_paper_id: str | None = None,
 ) -> VideoTranscription:
     model = model or Model.DEFAULT
     model_id = model.value
@@ -560,21 +559,22 @@ def get_video_transcription(
     if not video_part:  # Unsupported source, return an empty transcription
         return VideoTranscription()
 
+    order_text = ""
+    if order_paper_id:
+        order_text = get_order_paper_from_db(order_paper_id)
+    elif order_file:
+        with open(order_file, "r") as f:
+            order_text = f.read().strip()
+
     if prompt is None:
         timecode_spec = get_timecode_spec_for_model_and_video(model, video)
-        order_context = ""
-        if order_file:
-            order_context = "An order document is provided below for context."
-        else:
-            order_context = "No additional context provided."
+        order_context = order_text if order_text else "No additional context provided."
         prompt = VIDEO_TRANSCRIPTION_PROMPT.format(
             timecode_spec=timecode_spec, order_context=order_context
         )
 
     contents = [video_part, prompt.strip()]
-    if order_file:
-        with open(order_file, "r") as f:
-            order_text = f.read().strip()
+    if order_text:
         contents.append(Part(text=order_text))
 
     config = get_generate_content_config(model, video)
@@ -743,6 +743,7 @@ def process_video_iteratively(
     start_minutes: int = 0,
     max_segments: int | None = None,
     order_file: str | None = None,
+    order_paper_id: str | None = None,
 ) -> dict:
     """
     Process video in overlapping segments.
@@ -768,7 +769,11 @@ def process_video_iteratively(
     segment_num = 0
 
     order_text = ""
-    if order_file:
+    if order_paper_id:
+        order_text = get_order_paper_from_db(order_paper_id)
+        if not order_text:
+            print(f"⚠️ Order paper not found in DB: {order_paper_id}")
+    elif order_file:
         with open(order_file, "r") as f:
             order_text = f.read().strip()
 
@@ -855,14 +860,14 @@ def process_video_iteratively(
             if speaker.voice in matched_speakers:
                 speaker.speaker_id = matched_speakers[speaker.voice]["speaker_id"]
 
-        existing_leg_ids = {l.id for l in all_legislation}
+        existing_leg_ids = {leg_item.id for leg_item in all_legislation}
         for leg in result.task3_legislation:
             if not leg.id:
                 leg_id = generate_legislation_id(leg.name, existing_leg_ids)
                 leg.id = leg_id
                 existing_leg_ids.add(leg_id)
 
-            if leg.id not in {l.id for l in all_legislation}:
+            if leg.id not in {leg_item.id for leg_item in all_legislation}:
                 all_legislation.append(leg)
 
         all_transcripts.extend(result.task1_transcripts)
@@ -873,7 +878,6 @@ def process_video_iteratively(
             print("🛑 End of video reached")
             break
 
-        consecutive_empty_segments = 0
         segment_start = next_segment_start
         segment_num += 1
 
@@ -883,6 +887,104 @@ def process_video_iteratively(
         "legislation": all_legislation,
         "video_metadata": video_metadata,
     }
+
+
+def get_order_paper_from_db(order_paper_id: str) -> str:
+    """Fetch order paper from database and format as context text.
+
+    Args:
+        order_paper_id: Order paper ID
+
+    Returns:
+        Formatted order paper text for context
+    """
+    with PostgresClient() as postgres:
+        result = postgres.execute_query(
+            """
+            SELECT session, sitting_date, sitting_number, parsed_json
+            FROM order_papers
+            WHERE id = %s
+            """,
+            (order_paper_id,),
+        )
+
+    if not result:
+        return ""
+
+    session, sitting_date, sitting_number, parsed_json = result[0]
+
+    parsed: dict[str, object]
+    if parsed_json is None:
+        parsed = {}
+    elif isinstance(parsed_json, str):
+        try:
+            parsed = json.loads(parsed_json)
+        except Exception:
+            parsed = {}
+    elif isinstance(parsed_json, dict):
+        parsed = parsed_json
+    else:
+        parsed = {}
+
+    speakers = parsed.get("speakers")
+    agenda_items = parsed.get("agenda_items")
+    if not isinstance(speakers, list):
+        speakers = []
+    if not isinstance(agenda_items, list):
+        agenda_items = []
+
+    output: list[str] = []
+
+    title = (session or "").strip() or f"ORDER PAPER {order_paper_id}"
+    output.append("=" * 80)
+    output.append(title.upper())
+    output.append("=" * 80)
+    if sitting_number:
+        output.append(f"Sitting: {sitting_number}")
+    if sitting_date:
+        output.append(f"Date: {sitting_date}")
+    output.append("")
+
+    if speakers:
+        output.append("SPEAKERS")
+        output.append("-" * 40)
+        for speaker in speakers:
+            if not isinstance(speaker, dict):
+                continue
+            name = str(speaker.get("name", "")).strip()
+            if not name:
+                continue
+            s_title = str(speaker.get("title", "")).strip()
+            role = str(speaker.get("role", "")).strip()
+
+            line = f"- {name}"
+            if s_title:
+                line += f" ({s_title})"
+            if role:
+                line += f" - {role}"
+            output.append(line)
+        output.append("")
+
+    if agenda_items:
+        output.append("AGENDA ITEMS")
+        output.append("-" * 40)
+        for idx, item in enumerate(agenda_items, 1):
+            if not isinstance(item, dict):
+                continue
+            topic = str(item.get("topic_title", "")).strip()
+            if not topic:
+                continue
+            mover = str(item.get("primary_speaker", "")).strip()
+            description = str(item.get("description", "")).strip()
+
+            output.append(f"{idx}. {topic}")
+            if mover:
+                output.append(f"   Mover: {mover}")
+            if description:
+                output.append(f"   Description: {description}")
+            output.append("")
+
+    return "\n".join(output)
 
 
 if __name__ == "__main__":
@@ -906,6 +1008,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Path to order file for additional context",
+    )
+    parser.add_argument(
+        "--order-paper-id",
+        type=str,
+        default=None,
+        help="Order paper ID from database (loads order paper for context)",
     )
     parser.add_argument(
         "--segment-minutes",
@@ -953,6 +1061,7 @@ if __name__ == "__main__":
         start_minutes=args.start_minutes,
         max_segments=args.max_segments,
         order_file=args.order_file,
+        order_paper_id=args.order_paper_id,
     )
 
     print_combined_results(results)
