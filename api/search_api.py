@@ -256,6 +256,7 @@ class ChatMessageResponse(BaseModel):
     used_edges: list[ChatUsedEdge] = []
     sources: list[ChatSource] = []
     focus_node_ids: list[str] = []
+    followup_questions: list[str] = []
     debug: dict[str, Any] | None = None
 
 
@@ -902,6 +903,7 @@ async def send_message(thread_id: str, request: ChatMessageRequest):
             assistant_message=ThreadMessage(**response["assistant_message"]),
             sources=[ChatSource(**s) for s in response.get("sources", [])],
             focus_node_ids=list(response.get("focus_node_ids", [])),
+            followup_questions=list(response.get("followup_questions", [])),
             debug=response.get("debug"),
         )
     except ValueError as e:

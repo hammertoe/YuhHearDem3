@@ -10,6 +10,7 @@ type UIMessage = {
   createdAt?: string;
   sources?: ChatSource[];
   citationIds?: string[];
+  followupQuestions?: string[];
 };
 
 function extractCitationIds(metadata: unknown): string[] {
@@ -21,6 +22,17 @@ function extractCitationIds(metadata: unknown): string[] {
     .map((v) => String(v || '').trim())
     .filter((v) => v.length > 0)
     .slice(0, 12);
+}
+
+function extractFollowupQuestions(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== 'object') return [];
+  const rec = metadata as Record<string, unknown>;
+  const raw = rec.followup_questions;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((v) => String(v || '').trim())
+    .filter((v) => v.length > 0)
+    .slice(0, 4);
 }
 
 const EXAMPLE_PROMPTS = [
@@ -302,6 +314,7 @@ function App() {
                 content: m.content,
                 createdAt: m.created_at,
                 citationIds: extractCitationIds(m.metadata),
+                followupQuestions: extractFollowupQuestions(m.metadata),
               }))
           );
           return;
@@ -360,6 +373,10 @@ function App() {
         createdAt: res.assistant_message.created_at,
         sources: res.sources || [],
         citationIds: extractCitationIds(res.assistant_message.metadata),
+        followupQuestions:
+          (res.followup_questions || []).length > 0
+            ? (res.followup_questions || []).slice(0, 4)
+            : extractFollowupQuestions(res.assistant_message.metadata),
       };
       setMessages((m) => [...m, assistant]);
     } catch (e) {
@@ -540,6 +557,26 @@ function App() {
                                   </div>
                                 </div>
                               </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {m.role === 'assistant' && m.followupQuestions && m.followupQuestions.length > 0 && (
+                        <div className="mt-4 border-t-2 border-[#00267F]/10 pt-3">
+                          <div className="label-text mb-2">
+                            Suggested Follow-up Questions
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {m.followupQuestions.map((q, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => onSend(q)}
+                                className="chip"
+                              >
+                                {q}
+                              </button>
                             ))}
                           </div>
                         </div>

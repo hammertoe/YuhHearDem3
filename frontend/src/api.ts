@@ -34,6 +34,7 @@ export type ChatResponse = {
   assistant_message: ThreadMessage;
   sources: ChatSource[];
   focus_node_ids: string[];
+  followup_questions: string[];
   debug?: Record<string, unknown> | null;
 };
 

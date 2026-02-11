@@ -266,3 +266,36 @@ def test_agent_loop_keeps_existing_inline_source_links() -> None:
 
     result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
     assert result["answer"] == answer
+
+
+def test_agent_loop_limits_followup_questions_to_four() -> None:
+    from lib.kg_agent_loop import KGAgentLoop
+
+    responses = [
+        _FakeResponse(
+            text=json.dumps(
+                {
+                    "answer": "Water policy was debated.",
+                    "cite_utterance_ids": [],
+                    "focus_node_ids": [],
+                    "followup_questions": [
+                        "Q1",
+                        "Q2",
+                        "Q3",
+                        "Q4",
+                        "Q5",
+                    ],
+                }
+            ),
+            function_calls=None,
+        )
+    ]
+    client = _FakeGeminiClient(responses)
+    loop = KGAgentLoop(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        client=client,
+    )
+
+    result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
+    assert result["followup_questions"] == ["Q1", "Q2", "Q3", "Q4"]

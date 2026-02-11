@@ -32,9 +32,7 @@ def test_merge_cite_utterance_ids_should_include_answer_links_and_cite_ids() -> 
     assert got == ["utt_1", "utt_2", "utt_3"]
 
 
-def test_merge_cite_utterance_ids_should_filter_unknown_ids_when_retrieval_known() -> (
-    None
-):
+def test_merge_cite_utterance_ids_should_filter_unknown_ids_when_retrieval_known() -> None:
     retrieval = {"citations": [{"utterance_id": "utt_1"}]}
 
     got = _merge_cite_utterance_ids(
@@ -44,3 +42,20 @@ def test_merge_cite_utterance_ids_should_filter_unknown_ids_when_retrieval_known
     )
 
     assert got == ["utt_1"]
+
+
+def test_merge_cite_utterance_ids_should_match_known_ids_with_utt_prefix_variants() -> None:
+    retrieval = {
+        "citations": [
+            {"utterance_id": "utt_abc"},
+            {"utterance_id": "utt_def"},
+        ]
+    }
+
+    got = _merge_cite_utterance_ids(
+        answer="Point [1](#src:abc)",
+        cite_utterance_ids=["def"],
+        retrieval=retrieval,
+    )
+
+    assert got == ["utt_abc", "utt_def"]

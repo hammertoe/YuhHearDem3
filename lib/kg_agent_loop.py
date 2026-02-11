@@ -179,6 +179,7 @@ AGENT_RESPONSE_SCHEMA: dict[str, Any] = {
         "answer": {"type": "string"},
         "cite_utterance_ids": {"type": "array", "items": {"type": "string"}},
         "focus_node_ids": {"type": "array", "items": {"type": "string"}},
+        "followup_questions": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["answer", "cite_utterance_ids", "focus_node_ids"],
 }
@@ -278,9 +279,7 @@ def _filter_to_known_citation_ids(
     if not cite_utterance_ids:
         return []
     if not isinstance(retrieval, dict):
-        return [
-            str(x or "").strip() for x in cite_utterance_ids if str(x or "").strip()
-        ]
+        return [str(x or "").strip() for x in cite_utterance_ids if str(x or "").strip()]
 
     known = {
         str(c.get("utterance_id") or "").strip()
@@ -289,9 +288,7 @@ def _filter_to_known_citation_ids(
     }
     known.discard("")
     if not known:
-        return [
-            str(x or "").strip() for x in cite_utterance_ids if str(x or "").strip()
-        ]
+        return [str(x or "").strip() for x in cite_utterance_ids if str(x or "").strip()]
 
     out: list[str] = []
     seen: set[str] = set()
@@ -342,20 +339,21 @@ class KGAgentLoop:
         return (
             "You are YuhHearDem, a friendly AI guide to Barbados Parliament debates. "
             "Keep a lightly Caribbean (Bajan) tone - warm and plainspoken, not cheesy.\n\n"
-            "You MUST ground everything in retrieved evidence from the knowledge graph and transcript utterances.\n\n"
+            "You MUST ground everything in retrieved evidence from knowledge graph and transcript utterances.\n\n"
             "Rules:\n"
             "- Before answering, call the tool `kg_hybrid_graph_rag` to retrieve a compact subgraph + citations.\n"
             "- Use ONLY the tool results as your source of truth. Do not invent facts.\n"
             "- Interpret the tool results: use `edges` + `nodes` to explain relationships (who/what connects to what, agreements/disagreements, proposals, responsibilities) in plain language.\n"
             "- Prefer quoting MPs directly when citations are available; use markdown blockquotes and put the quoted sentence in *italics*.\n"
             "- Add visible inline citations in the answer body using markdown links like `[1](#src:utt_123)` or `[cite](#src:utt_123)` immediately after the sentence/quote they support.\n"
-            "- Use only utterance_ids that appear in the tool citations.\n"
-            "- Use short section headings for the main themes using markdown like `### The Climate Change Clash`.\n"
+            "- Use only utterance_ids that appear in tool citations.\n"
+            "- Use short section headings for main themes using markdown like `### The Climate Change Clash`.\n"
             "- Do NOT include a section called 'Key connections' and do NOT show technical arrow notation like `A -> PREDICATE -> B`.\n"
             "- Do NOT start your answer with filler like 'Wuhloss,'; start directly with the point.\n"
             "- Your `answer` field may contain markdown (bullets, bold, blockquotes).\n"
             "- When you make a claim, include at least one citation by listing its `utterance_id` in `cite_utterance_ids`.\n"
             "- If evidence is insufficient, say so clearly and ask one precise follow-up.\n"
+            "- Generate 2-4 follow-up questions based on your answer that users might naturally want to ask next. These should be specific questions that explore related topics, dive deeper into mentioned entities, or ask about related legislation or debates.\n"
             "- Return JSON only matching the response schema."
         )
 
@@ -392,14 +390,10 @@ class KGAgentLoop:
                 continue
             gemini_role = "user" if role == "user" else "model"
             contents.append(
-                types.Content(
-                    role=gemini_role, parts=[types.Part.from_text(text=content)]
-                )
+                types.Content(role=gemini_role, parts=[types.Part.from_text(text=content)])
             )
 
-        contents.append(
-            types.Content(role="user", parts=[types.Part.from_text(text=user_message)])
-        )
+        contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_message)]))
         return contents
 
     def _extract_function_calls(self, response: Any) -> list[_ToolCall]:
@@ -434,9 +428,7 @@ class KGAgentLoop:
             config=config,
         )
 
-    async def run(
-        self, *, user_message: str, history: list[dict[str, str]]
-    ) -> dict[str, Any]:
+    async def run(self, *, user_message: str, history: list[dict[str, str]]) -> dict[str, Any]:
         trace_id = str(uuid.uuid4())[:8]
         total_start = _start_timer()
 
@@ -471,9 +463,7 @@ class KGAgentLoop:
                         print(f"        Args: {p.get('args', {})}")
                     elif p_type == "function_response":
                         print(f"        Name: {p.get('name', '')}")
-                        print(
-                            f"        Response type: {type(p.get('response', {})).__name__}"
-                        )
+                        print(f"        Response type: {type(p.get('response', {})).__name__}")
             print(f"\n{'=' * 60}\n")
         llm_start = _start_timer()
         response = await self._call_llm(contents, is_tool_call=True)
@@ -490,9 +480,7 @@ class KGAgentLoop:
         iterations = 0
 
         while True:
-            _trace_section_start(
-                trace_id, f"PARSING LLM RESPONSE (iteration {iterations})"
-            )
+            _trace_section_start(trace_id, f"PARSING LLM RESPONSE (iteration {iterations})")
 
             candidates = getattr(response, "candidates", None)
             if candidates:
@@ -652,9 +640,7 @@ class KGAgentLoop:
                             print(f"        Args: {p.get('args', {})}")
                         elif p_type == "function_response":
                             print(f"        Name: {p.get('name', '')}")
-                            print(
-                                f"        Response type: {type(p.get('response', {})).__name__}"
-                            )
+                            print(f"        Response type: {type(p.get('response', {})).__name__}")
                 print(f"\n{'=' * 60}\n")
             llm_start = _start_timer()
             response = await self._call_llm(contents, is_tool_call=False)
@@ -672,15 +658,22 @@ class KGAgentLoop:
         parsed = _parse_json_best_effort(getattr(response, "text", None))
         if not parsed:
             parsed = {
-                "answer": getattr(response, "text", None)
-                or "I couldn't generate an answer.",
+                "answer": getattr(response, "text", None) or "I couldn't generate an answer.",
                 "cite_utterance_ids": [],
                 "focus_node_ids": [],
+                "followup_questions": [],
             }
 
         parsed.setdefault("cite_utterance_ids", [])
         parsed.setdefault("focus_node_ids", [])
         parsed.setdefault("answer", "")
+        parsed.setdefault("followup_questions", [])
+
+        parsed["followup_questions"] = [
+            str(q).strip()
+            for q in list(parsed.get("followup_questions") or [])
+            if str(q or "").strip()
+        ][:4]
 
         parsed["cite_utterance_ids"] = _filter_to_known_citation_ids(
             list(parsed.get("cite_utterance_ids") or []),

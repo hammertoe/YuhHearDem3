@@ -76,27 +76,76 @@ def _extract_answer_citation_ids(answer: str) -> list[str]:
     return out
 
 
+def _normalize_citation_id(raw_id: str) -> str:
+    """Normalize citation IDs across link and storage formats."""
+    raw = unquote(str(raw_id or "").strip())
+    raw = re.sub(r"^https?://[^#]+#", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"^#?src:", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"^source:", "", raw, flags=re.IGNORECASE)
+    return raw.strip()
+
+
+def _citation_lookup_keys(citation_id: str) -> list[str]:
+    """Generate equivalent lookup keys for a citation ID."""
+    normalized = _normalize_citation_id(citation_id)
+    if not normalized:
+        return []
+
+    keys = [normalized, normalized.lower()]
+    if normalized.startswith("utt_"):
+        bare = normalized[4:]
+        if bare:
+            keys.extend([bare, bare.lower()])
+    else:
+        keys.extend([f"utt_{normalized}", f"utt_{normalized.lower()}"])
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for k in keys:
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        out.append(k)
+    return out
+
+
 def _merge_cite_utterance_ids(
     *, answer: str, cite_utterance_ids: list[str], retrieval: dict[str, Any] | None
 ) -> list[str]:
     answer_ids = _extract_answer_citation_ids(answer)
     combined = answer_ids + [str(x or "").strip() for x in cite_utterance_ids]
 
-    known = {
+    known_ids = [
         str(c.get("utterance_id") or "").strip()
         for c in (retrieval or {}).get("citations", [])
         if isinstance(c, dict)
-    }
-    known.discard("")
+    ]
+    known_ids = [k for k in known_ids if k]
+    known_lookup: dict[str, str] = {}
+    for known_id in known_ids:
+        for key in _citation_lookup_keys(known_id):
+            known_lookup[key] = known_id
 
     out: list[str] = []
     seen: set[str] = set()
     for raw in combined:
-        uid = str(raw or "").strip()
+        uid = _normalize_citation_id(str(raw or ""))
         if not uid or uid in seen:
             continue
-        if known and uid not in known:
+        if known_lookup:
+            matched: str | None = None
+            for key in _citation_lookup_keys(uid):
+                if key in known_lookup:
+                    matched = known_lookup[key]
+                    break
+            if not matched:
+                continue
+            if matched in seen:
+                continue
+            seen.add(matched)
+            out.append(matched)
             continue
+
         seen.add(uid)
         out.append(uid)
     return out
@@ -224,9 +273,7 @@ class KGChatAgentV2:
 
         return thread
 
-    def _get_recent_history_for_llm(
-        self, thread_id: str, limit: int = 16
-    ) -> list[dict[str, str]]:
+    def _get_recent_history_for_llm(self, thread_id: str, limit: int = 16) -> list[dict[str, str]]:
         rows = self.postgres.execute_query(
             """
             SELECT role, content
@@ -245,38 +292,94 @@ class KGChatAgentV2:
         cite_utterance_ids: list[str],
         max_sources: int = 24,
     ) -> list[ChatSource]:
-        if not retrieval:
-            return []
-        citations = retrieval.get("citations") or []
-        citation_by_id = {c.get("utterance_id"): c for c in citations}
-
-        out: list[ChatSource] = []
-        for uid in cite_utterance_ids:
-            c = citation_by_id.get(uid)
-            if not c:
+        citations = (retrieval.get("citations") or []) if retrieval else []
+        citation_by_id: dict[str, dict[str, Any]] = {}
+        for c in citations:
+            if not isinstance(c, dict):
                 continue
-            out.append(
-                ChatSource(
-                    utterance_id=c.get("utterance_id", ""),
-                    youtube_video_id=c.get("youtube_video_id", ""),
-                    youtube_url=c.get("youtube_url", ""),
-                    seconds_since_start=int(c.get("seconds_since_start") or 0),
-                    timestamp_str=c.get("timestamp_str", ""),
-                    speaker_id=c.get("speaker_id", ""),
-                    speaker_name=c.get("speaker_name", ""),
-                    speaker_title=c.get("speaker_title"),
-                    text=c.get("text", ""),
-                    video_title=c.get("video_title"),
-                    video_date=c.get("video_date"),
+            cid = str(c.get("utterance_id") or "").strip()
+            if not cid:
+                continue
+            for key in _citation_lookup_keys(cid):
+                citation_by_id[key] = c
+        fetched_ids: set[str] = set()
+        out: list[ChatSource] = []
+
+        for uid in cite_utterance_ids:
+            normalized_uid = _normalize_citation_id(uid)
+            if not normalized_uid:
+                continue
+
+            c = None
+            for key in _citation_lookup_keys(normalized_uid):
+                c = citation_by_id.get(key)
+                if c is not None:
+                    break
+
+            if c:
+                canonical_id = str(c.get("utterance_id") or normalized_uid)
+                if canonical_id in fetched_ids:
+                    continue
+                out.append(
+                    ChatSource(
+                        utterance_id=c.get("utterance_id", ""),
+                        youtube_video_id=c.get("youtube_video_id", ""),
+                        youtube_url=c.get("youtube_url", ""),
+                        seconds_since_start=int(c.get("seconds_since_start") or 0),
+                        timestamp_str=c.get("timestamp_str", ""),
+                        speaker_id=c.get("speaker_id", ""),
+                        speaker_name=c.get("speaker_name", ""),
+                        speaker_title=c.get("speaker_title"),
+                        text=c.get("text", ""),
+                        video_title=c.get("video_title"),
+                        video_date=c.get("video_date"),
+                    )
                 )
-            )
+                fetched_ids.add(canonical_id)
+            else:
+                if normalized_uid in fetched_ids:
+                    continue
+                source = self._fetch_source_by_id(normalized_uid)
+                if source:
+                    out.append(source)
+                    fetched_ids.add(source.utterance_id)
             if len(out) >= max_sources:
                 break
         return out
 
-    async def process_message(
-        self, thread_id: str, user_content: str
-    ) -> dict[str, Any]:
+    def _fetch_source_by_id(self, utterance_id: str) -> ChatSource | None:
+        """Fetch a source from the database by utterance ID."""
+        try:
+            rows = self.postgres.execute_query(
+                """
+                SELECT s.id, s.youtube_video_id, s.seconds_since_start, s.timestamp_str,
+                       s.text, s.speaker_id, s.video_title, s.video_date
+                FROM sentences s
+                WHERE s.id = %s
+                LIMIT 1
+                """,
+                (utterance_id,),
+            )
+            if not rows:
+                return None
+            row = rows[0]
+            return ChatSource(
+                utterance_id=row[0],
+                youtube_video_id=row[1],
+                youtube_url=f"https://youtube.com/watch?v={row[1]}&t={row[2]}",
+                seconds_since_start=row[2],
+                timestamp_str=row[3] or "",
+                speaker_id=row[5] or "",
+                speaker_name=row[5] or "",
+                speaker_title=None,
+                text=row[4] or "",
+                video_title=row[6] or "",
+                video_date=str(row[7]) if row[7] else None,
+            )
+        except Exception:
+            return None
+
+    async def process_message(self, thread_id: str, user_content: str) -> dict[str, Any]:
         self._ensure_chat_schema()
         thread = self.get_thread(thread_id)
         if thread is None:
@@ -290,9 +393,7 @@ class KGChatAgentV2:
         _trace_section_start("PROCESS MESSAGE START")
         _trace_print("Thread ID", thread_id)
         _trace_print("User Message ID", user_message_id)
-        _trace_print(
-            "User Query", f"{_truncate_text(user_content)} ({len(user_content)} chars)"
-        )
+        _trace_print("User Query", f"{_truncate_text(user_content)} ({len(user_content)} chars)")
         _trace_section_end()
 
         self.postgres.execute_update(
@@ -321,11 +422,17 @@ class KGChatAgentV2:
             retrieval=retrieval if isinstance(retrieval, dict) else None,
         )
         focus_node_ids = list(result.get("focus_node_ids") or [])
+        followup_questions = [
+            str(q).strip()
+            for q in list(result.get("followup_questions") or [])
+            if str(q or "").strip()
+        ][:4]
 
         assistant_message_id = str(uuid.uuid4())
         metadata = {
             "cite_utterance_ids": cite_utterance_ids,
             "focus_node_ids": focus_node_ids,
+            "followup_questions": followup_questions,
             "retrieval_debug": (retrieval or {}).get("debug")
             if isinstance(retrieval, dict)
             else None,
@@ -399,6 +506,7 @@ class KGChatAgentV2:
             },
             "sources": [s.__dict__ for s in sources],
             "focus_node_ids": focus_node_ids,
+            "followup_questions": followup_questions,
             "debug": {
                 "tool_iterations": None,
                 "retrieval": (retrieval or {}).get("debug")
