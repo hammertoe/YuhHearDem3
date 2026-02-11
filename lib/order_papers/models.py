@@ -26,6 +26,7 @@ class AgendaItem:
 class OrderPaper:
     """Parsed order paper"""
 
+    chamber: str
     session_title: str
     session_date: date
     sitting_number: str | None = None

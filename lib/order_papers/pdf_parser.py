@@ -55,6 +55,7 @@ Please read and understand the entire document structure before extracting infor
 Extract:
 
 1. **Session Information:**
+   - The chamber as exactly one of: "house" or "senate"
    - The full session title (e.g., "The Honourable The Senate, First Session of 2022-2027")
    - The sitting number (e.g., "Sixty-Seventh Sitting")
    - The session date in YYYY-MM-DD format
@@ -89,6 +90,11 @@ Return the information in the specified JSON structure."""
                 "session_title": {
                     "type": "string",
                     "description": "Full session title",
+                },
+                "chamber": {
+                    "type": "string",
+                    "enum": ["house", "senate"],
+                    "description": "Parliamentary chamber",
                 },
                 "sitting_number": {
                     "type": "string",
@@ -126,8 +132,24 @@ Return the information in the specified JSON structure."""
                     },
                 },
             },
-            "required": ["session_title", "session_date", "speakers", "agenda_items"],
+            "required": [
+                "session_title",
+                "chamber",
+                "session_date",
+                "speakers",
+                "agenda_items",
+            ],
         }
+
+    def _normalize_chamber(self, chamber: str | None, session_title: str) -> str:
+        raw = (chamber or "").strip().lower()
+        if raw in {"house", "senate"}:
+            return raw
+
+        title = (session_title or "").lower()
+        if "senate" in title:
+            return "senate"
+        return "house"
 
     def _parse_response(self, response: dict) -> OrderPaper:
         """Parse Gemini response into OrderPaper object.
@@ -159,6 +181,9 @@ Return the information in the specified JSON structure."""
         ]
 
         return OrderPaper(
+            chamber=self._normalize_chamber(
+                response.get("chamber"), response.get("session_title", "")
+            ),
             session_title=response["session_title"],
             session_date=session_date,
             sitting_number=response.get("sitting_number"),
