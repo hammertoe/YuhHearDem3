@@ -33,8 +33,24 @@ from lib.roles import (
 )
 
 
+def _resolve_chamber(
+    chamber_arg: str, parsed_chamber: str | None, session_title: str
+) -> str:
+    if chamber_arg in {"house", "senate"}:
+        return chamber_arg
+
+    parsed = (parsed_chamber or "").strip().lower()
+    if parsed in {"house", "senate"}:
+        return parsed
+
+    title = (session_title or "").lower()
+    if "senate" in title:
+        return "senate"
+    return "house"
+
+
 def ingest_order_paper(
-    pdf_path: str, chamber: str = "house", *, youtube_video_id: str | None = None
+    pdf_path: str, chamber: str = "auto", *, youtube_video_id: str | None = None
 ) -> str:
     """Parse an order paper PDF using Gemini vision and save it to database.
 
@@ -60,7 +76,12 @@ def ingest_order_paper(
     print(f"  Speakers: {len(parsed_paper.speakers)}")
     print(f"  Agenda Items: {len(parsed_paper.agenda_items)}")
 
-    chamber_code = "h" if chamber == "house" else "s"
+    resolved_chamber = _resolve_chamber(
+        chamber,
+        getattr(parsed_paper, "chamber", None),
+        parsed_paper.session_title,
+    )
+    chamber_code = "h" if resolved_chamber == "house" else "s"
     sitting_number = parsed_paper.sitting_number or ""
     order_paper_number = sitting_number
 
@@ -216,9 +237,9 @@ def main() -> int:
     parser.add_argument("pdf_path", help="Path to PDF file")
     parser.add_argument(
         "--chamber",
-        choices=["house", "senate"],
-        default="house",
-        help="Chamber type (default: house)",
+        choices=["auto", "house", "senate"],
+        default="auto",
+        help="Chamber type (default: auto; inferred by parser)",
     )
     parser.add_argument(
         "--youtube-video-id",
