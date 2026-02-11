@@ -388,7 +388,7 @@ function App() {
 
   return (
     <div className="min-h-screen app-bg relative">
-      <div className="parliament-bg pointer-events-none absolute inset-x-0 top-0 z-0 h-[400px]" />
+      <div className="parliament-bg pointer-events-none absolute inset-x-0 top-0 z-0" />
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 relative z-10">
         {/* Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

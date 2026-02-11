@@ -468,10 +468,11 @@ body {
 
 /* Parliament Background */
 .parliament-bg {
-  /* User-supplied image from Wikimedia Commons (locally hosted) */
-  background-image: url('/parliament-bg.jpg');
+  /* Cropped image keeps the building higher on wide screens */
+  height: clamp(260px, 34vw, 360px);
+  background-image: url('/parliament-bg-cropped.jpg');
   background-size: cover;
-  background-position: center top;
+  background-position: center 18%;
   background-repeat: no-repeat;
   
   /* “subtle in header” look */
@@ -486,9 +487,15 @@ body {
   
   /* Helpful blend mode */
   mix-blend-mode: multiply;
-  
+
   /* Fallback for browsers with strict privacy settings that might block masks */
   background-color: transparent;
+}
+
+@media (min-width: 1280px) {
+  .parliament-bg {
+    background-position: center 26%;
+  }
 }
 
 /* Header Styles */
