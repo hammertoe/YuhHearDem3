@@ -79,6 +79,7 @@ class AppConfig:
         "true",
         "on",
     }
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 
 config = AppConfig()

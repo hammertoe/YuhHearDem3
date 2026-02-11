@@ -22,7 +22,13 @@ class AdvancedSearchFeatures:
         embedding_client: GoogleEmbeddingClient | None = None,
     ):
         self.postgres = postgres or PostgresClient()
-        self.memgraph = memgraph or MemgraphClient()
+        self.memgraph = memgraph
+        if self.memgraph is None:
+            try:
+                self.memgraph = MemgraphClient()
+            except Exception:
+                print("Warning: Could not connect to Memgraph, graph features will be disabled")
+                self.memgraph = None
         self.embedding_client = embedding_client or GoogleEmbeddingClient()
 
     def temporal_search(
@@ -62,7 +68,9 @@ class AdvancedSearchFeatures:
         join_entity_filter = ""
         join_params: list[Any] = []
         if entity_type:
-            join_entity_filter = "JOIN sentence_entities se ON se.sentence_id = s.id AND se.entity_type = %s"
+            join_entity_filter = (
+                "JOIN sentence_entities se ON se.sentence_id = s.id AND se.entity_type = %s"
+            )
             join_params.append(entity_type)
 
         params: list[Any] = [query_embedding, *join_params, *where_params, limit]
@@ -377,9 +385,7 @@ def main():
             json.dump(results, f, indent=2)
 
     elif args.command == "complex":
-        results = features.complex_query(
-            args.query_type, {"max_results": args.max_results}
-        )
+        results = features.complex_query(args.query_type, {"max_results": args.max_results})
         print("\n✅ Complex query complete")
         with open("complex_search_results.json", "w") as f:
             json.dump(results, f, indent=2)
