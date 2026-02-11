@@ -2,7 +2,7 @@
 
 ## What Was Implemented
 
-Added automatic normalization of relative date entities in the knowledge graph extraction script (`build_knowledge_graph.py`).
+Added automatic normalization of relative date entities in the knowledge graph extraction system (`lib/knowledge_graph/`).
 
 ## Key Features
 
@@ -50,7 +50,7 @@ resolved_date: Optional[str] = None  # Normalized absolute date
 is_relative: bool = False           # Whether normalization was attempted
 ```
 
-### New Methods in KnowledgeGraphBuilder
+### New Methods in Knowledge Graph Extraction
 
 1. **`_is_relative_date(text: str) -> bool`**
    - Checks if text appears to be a relative date
@@ -64,7 +64,7 @@ is_relative: bool = False           # Whether normalization was attempted
    - Validates that date year is reasonable
    - Prevents absurd dates (e.g., 1800, 3000)
 
-4. **`_resolve_last_month_pattern(text: str, anchor_date: datetime) -> Optional[datetime]`**
+4. **`_resolve_last_month_pattern(text: str, anchor_date: datetime) -> datetime | None`**
    - Manually resolves "last [Month]" patterns
    - Handles cases dateparser misses
 
@@ -75,15 +75,15 @@ is_relative: bool = False           # Whether normalization was attempted
 
 ### Modified Methods
 
-**`build_knowledge_graph()`**:
+**Extraction pipeline in `kg_extractor.py`**:
 - Extracts anchor date from `video_metadata.upload_date`
 - **Fails hard** if no valid anchor date found (as requested)
 - Calls `normalize_relative_dates()` after entity extraction
 
-**`_create_knowledge_graph()`**:
+**Output formatting**:
 - Includes `resolved_date` and `is_relative` fields for DATE entities in output
 
-**`export_networkx_html()`**:
+**HTML Export** (`kg_export_html.py`):
 - Shows resolved date in node tooltip when available
 
 ## Error Handling

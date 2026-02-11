@@ -1,16 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&family=Nunito:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --paper: #f7f2ea;
-  --ink: #141315;
-  --muted: rgba(20, 19, 21, 0.65);
-  --card: rgba(255, 255, 255, 0.64);
-  --card-strong: rgba(255, 255, 255, 0.82);
-  --stroke: rgba(20, 19, 21, 0.10);
-  --accent: #2a6f68;
-  --accent-2: #c96d2d;
+  /* Bajan Flag Colors - Primary Identity */
+  --bajan-blue: #00267F;
+  --bajan-gold: #FFC726;
+  --bajan-black: #1A1A1A;
+  
+  /* Chattel House Colors */
+  --chattel-coral: #E85D4E;
+  --chattel-mint: #7CB9A8;
+  --chattel-cream: #F5E6C8;
+  --chattel-sky: #87CEEB;
+  
+  /* Natural Barbados */
+  --ocean-deep: #006994;
+  --ocean-shallow: #40E0D0;
+  --sand-warm: #E6D5AC;
+  
+  /* Paper & Ink */
+  --paper: #FDF8F0;
+  --paper-warm: #FAF6EF;
+  --ink: #1A1A1A;
+  --ink-muted: rgba(26, 26, 26, 0.65);
+  --ink-light: rgba(26, 26, 26, 0.45);
+  
+  /* Typography */
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'DM Serif Display', Georgia, serif;
+  --font-accent: 'Nunito', sans-serif;
 }
 
 * {
@@ -26,7 +47,7 @@ body {
   margin: 0;
   color: var(--ink);
   background: var(--paper);
-  font-family: "Avenir Next", Avenir, "Gill Sans", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-family: var(--font-accent);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -35,23 +56,58 @@ body {
   min-height: 100%;
 }
 
+/* Bajan Background - Chattel House Pattern */
 .app-bg {
-  background:
-    radial-gradient(1200px 700px at 20% 10%, rgba(42, 111, 104, 0.22), transparent 55%),
-    radial-gradient(900px 520px at 85% 30%, rgba(201, 109, 45, 0.18), transparent 55%),
-    radial-gradient(900px 600px at 55% 95%, rgba(20, 19, 21, 0.10), transparent 55%),
-    linear-gradient(180deg, #f7f2ea 0%, #eef1f2 100%);
+  background-color: var(--paper);
+  background-image: 
+    /* Subtle corrugated roof pattern */
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 48px,
+      rgba(0, 38, 127, 0.025) 48px,
+      rgba(0, 38, 127, 0.025) 50px
+    ),
+    /* Tropical gradient overlay */
+    radial-gradient(
+      ellipse at 0% 0%,
+      rgba(255, 199, 38, 0.12) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 100% 100%,
+      rgba(0, 105, 148, 0.08) 0%,
+      transparent 50%
+    );
 }
 
+/* Chattel House Panel Style */
 .panel {
-  border: 1px solid var(--stroke);
-  background: var(--card);
-  box-shadow:
-    0 20px 70px rgba(20, 19, 21, 0.10),
-    0 1px 0 rgba(255, 255, 255, 0.60) inset;
-  backdrop-filter: blur(14px);
-  border-radius: 18px;
-  padding: 20px;
+  background: linear-gradient(
+    180deg,
+    var(--chattel-cream) 0%,
+    #FFFEF9 100%
+  );
+  border: 2px solid var(--bajan-blue);
+  border-radius: 4px;
+  padding: 24px;
+  box-shadow: 
+    4px 4px 0 var(--bajan-gold),
+    8px 8px 0 rgba(0, 38, 127, 0.08);
+  position: relative;
+}
+
+/* Decorative corner accent */
+.panel::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--bajan-gold) 50%, transparent 50%);
+  border-top-right-radius: 4px;
+  pointer-events: none;
 }
 
 .text-ink {
@@ -62,53 +118,78 @@ body {
   color: var(--paper);
 }
 
+/* Chattel House Chip Style */
 .chip {
-  border: 1px solid rgba(20, 19, 21, 0.12);
-  background: rgba(255, 255, 255, 0.66);
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
-  line-height: 1.1;
-  color: rgba(20, 19, 21, 0.80);
-  transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
+  background: white;
+  border: 2px solid var(--bajan-blue);
+  border-radius: 4px;
+  padding: 10px 16px;
+  font-family: var(--font-accent);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--bajan-blue);
+  box-shadow: 2px 2px 0 var(--bajan-gold);
+  transition: all 0.15s ease;
+  cursor: pointer;
 }
 
 .chip:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.84);
-  border-color: rgba(20, 19, 21, 0.18);
+  background: var(--bajan-gold);
+  border-color: var(--bajan-gold);
+  color: var(--bajan-blue);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--bajan-blue);
 }
 
+/* Status Dots - Ocean Theme */
 .status-dot {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  box-shadow: 0 0 0 3px rgba(20, 19, 21, 0.06);
+  box-shadow: 0 0 0 3px rgba(0, 38, 127, 0.08);
 }
 
 .status-ok {
-  background: #30b57b;
+  background: var(--chattel-mint);
 }
 
 .status-bad {
-  background: #da3b3b;
+  background: var(--chattel-coral);
 }
 
 .status-unknown {
   background: #b7b7b7;
 }
 
+/* Chat List */
 .chat-list {
-  padding: 8px;
-  border-radius: 14px;
-  border: 1px solid rgba(20, 19, 21, 0.08);
-  background: rgba(255, 255, 255, 0.50);
+  padding: 12px;
+  border-radius: 4px;
+  border: 2px solid rgba(0, 38, 127, 0.1);
+  background: rgba(255, 255, 255, 0.6);
 }
 
+/* Message Row Animation - Island Time Wave */
 .msg-row {
   display: flex;
-  padding: 8px 0;
-  animation: fadeUp 220ms ease both;
+  padding: 10px 0;
+  animation: slideUpWave 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes slideUpWave {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .msg-user {
@@ -119,38 +200,69 @@ body {
   justify-content: flex-start;
 }
 
+/* Chattel House Bubble Style */
 .msg-bubble {
   max-width: 760px;
-  border-radius: 16px;
-  padding: 14px 14px;
-  border: 1px solid rgba(20, 19, 21, 0.10);
+  padding: 16px 18px;
+  border: 2px solid;
+  position: relative;
 }
 
+/* User messages - Coral with sharp corners */
 .bubble-user {
-  background: rgba(42, 111, 104, 0.12);
+  background: var(--chattel-coral);
+  border-color: var(--chattel-coral);
+  color: white;
+  border-radius: 4px 16px 16px 16px;
+  box-shadow: 3px 3px 0 rgba(232, 93, 78, 0.3);
 }
 
+/* Assistant messages - Cream with blue border */
 .bubble-assistant {
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--chattel-cream);
+  border-color: var(--bajan-blue);
+  color: var(--ink);
+  border-radius: 16px 16px 4px 16px;
+  box-shadow: 3px 3px 0 rgba(0, 38, 127, 0.15);
 }
 
+/* Source Cards with Wave Pattern */
 .source-card {
   display: block;
-  border: 1px solid rgba(20, 19, 21, 0.10);
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 12px;
-  padding: 8px 10px;
-  transition: transform 150ms ease, background 150ms ease;
+  background: white;
+  border: 2px solid var(--ocean-shallow);
+  border-radius: 4px;
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  box-shadow: 2px 2px 0 rgba(0, 105, 148, 0.15);
 }
 
-.source-flash {
-  outline: 2px solid rgba(17, 24, 39, 0.25);
-  outline-offset: 3px;
+.source-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--ocean-shallow),
+    var(--ocean-shallow) 8px,
+    transparent 8px,
+    transparent 12px
+  );
 }
 
 .source-card:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.88);
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 rgba(0, 105, 148, 0.2);
+}
+
+.source-flash {
+  outline: 2px solid var(--bajan-gold);
+  outline-offset: 3px;
 }
 
 .source-snippet {
@@ -164,12 +276,14 @@ body {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  border: 1px solid rgba(20, 19, 21, 0.10);
-  background: rgba(255, 255, 255, 0.70);
-  padding: 2px 8px;
+  border: 1px solid rgba(0, 38, 127, 0.2);
+  background: var(--chattel-cream);
+  padding: 3px 10px;
   font-size: 11px;
+  font-weight: 600;
   line-height: 1.2;
-  color: rgba(20, 19, 21, 0.70);
+  color: var(--bajan-blue);
+  font-family: var(--font-accent);
 }
 
 .source-title {
@@ -177,16 +291,18 @@ body {
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  font-weight: 600;
 }
 
-/* Markdown content inside assistant bubbles */
+/* Markdown Styling */
 .md {
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.6;
+  font-family: var(--font-accent);
 }
 
 .md p {
-  margin: 0 0 10px 0;
+  margin: 0 0 12px 0;
 }
 
 .md p:last-child {
@@ -195,98 +311,127 @@ body {
 
 .md ul,
 .md ol {
-  margin: 8px 0 10px 18px;
+  margin: 10px 0 12px 20px;
   padding: 0;
 }
 
 .md h3 {
-  margin: 14px 0 8px;
-  font-size: 15px;
-  font-weight: 750;
+  margin: 18px 0 10px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
   letter-spacing: -0.01em;
-  color: rgba(20, 19, 21, 0.92);
+  color: var(--bajan-blue);
 }
 
 .md h4 {
-  margin: 12px 0 6px;
-  font-size: 14px;
-  font-weight: 700;
-  color: rgba(20, 19, 21, 0.90);
+  margin: 14px 0 8px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .md li {
-  margin: 6px 0;
+  margin: 8px 0;
 }
 
 .md blockquote {
-  margin: 10px 0;
-  padding: 10px 12px;
-  border-left: 3px solid rgba(42, 111, 104, 0.55);
-  background: rgba(42, 111, 104, 0.08);
-  border-radius: 10px;
-  color: rgba(20, 19, 21, 0.88);
+  margin: 14px 0;
+  padding: 12px 16px;
+  border-left: 4px solid var(--bajan-gold);
+  background: rgba(255, 199, 38, 0.1);
+  border-radius: 0 8px 8px 0;
+  color: var(--ink);
   font-style: italic;
 }
 
 .md strong {
   font-weight: 700;
+  color: var(--bajan-blue);
 }
 
 .md a {
-  color: rgba(42, 111, 104, 1);
+  color: var(--bajan-blue);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
+  font-weight: 600;
+}
+
+.md a:hover {
+  color: var(--ocean-deep);
 }
 
 .md code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
-  font-size: 12px;
-  padding: 1px 6px;
-  border-radius: 8px;
-  background: rgba(20, 19, 21, 0.06);
+  font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 38, 127, 0.08);
+  color: var(--bajan-blue);
 }
 
+/* Composer Input */
 .composer {
   width: 100%;
   margin-top: 8px;
   resize: none;
-  border-radius: 14px;
-  border: 1px solid rgba(20, 19, 21, 0.12);
-  padding: 12px 12px;
-  background: rgba(255, 255, 255, 0.80);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset;
+  border-radius: 4px;
+  border: 2px solid rgba(0, 38, 127, 0.2);
+  padding: 14px 16px;
+  background: white;
   color: var(--ink);
+  font-family: var(--font-accent);
+  font-size: 15px;
   outline: none;
+  transition: all 0.2s ease;
 }
 
 .composer:focus {
-  border-color: rgba(42, 111, 104, 0.45);
-  box-shadow: 0 0 0 4px rgba(42, 111, 104, 0.16);
+  border-color: var(--bajan-blue);
+  box-shadow: 0 0 0 4px rgba(0, 38, 127, 0.12);
 }
 
+.composer::placeholder {
+  color: var(--ink-light);
+}
+
+/* Send Button - Bold Chattel Style */
 .send-btn {
-  border-radius: 16px;
-  padding: 12px 18px;
-  min-width: 120px;
-  background: linear-gradient(180deg, rgba(42, 111, 104, 1) 0%, rgba(31, 87, 82, 1) 100%);
-  color: var(--paper);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 16px 40px rgba(42, 111, 104, 0.26);
-  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+  border-radius: 4px;
+  padding: 14px 24px;
+  min-width: 130px;
+  background: var(--bajan-blue);
+  color: white;
+  border: 2px solid var(--bajan-blue);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 3px 3px 0 var(--bajan-gold);
+  transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .send-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 48px rgba(42, 111, 104, 0.30);
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 var(--bajan-gold);
+}
+
+.send-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--bajan-gold);
 }
 
 .send-btn:disabled {
-  opacity: 0.55;
-  box-shadow: none;
+  opacity: 0.5;
+  cursor: not-allowed;
   transform: none;
+  box-shadow: 3px 3px 0 var(--bajan-gold);
 }
 
+/* Typing Animation - Tropical Breeze */
 .typing {
   display: inline-flex;
   gap: 6px;
@@ -295,41 +440,127 @@ body {
 }
 
 .typing span {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: rgba(20, 19, 21, 0.35);
-  animation: dot 900ms infinite ease-in-out;
+  background: var(--bajan-blue);
+  animation: tropicalBounce 1.2s ease-in-out infinite;
 }
 
 .typing span:nth-child(2) {
-  animation-delay: 150ms;
+  animation-delay: 200ms;
 }
 
 .typing span:nth-child(3) {
-  animation-delay: 300ms;
+  animation-delay: 400ms;
 }
 
-@keyframes dot {
-  0%,
-  80%,
-  100% {
+@keyframes tropicalBounce {
+  0%, 100% { 
     transform: translateY(0);
-    opacity: 0.35;
+    background: var(--bajan-blue);
   }
-  40% {
-    transform: translateY(-4px);
-    opacity: 0.85;
+  50% { 
+    transform: translateY(-6px);
+    background: var(--bajan-gold);
   }
 }
 
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Header Styles */
+.header-title {
+  font-family: var(--font-display);
+  font-size: 2.75rem;
+  font-weight: 700;
+  color: var(--bajan-blue);
+  letter-spacing: -0.02em;
+  transform: rotate(-1deg);
+  text-shadow: 2px 2px 0 var(--bajan-gold);
+  position: relative;
+  display: inline-block;
+}
+
+/* Clear Button */
+.clear-btn {
+  border-radius: 4px;
+  border: 2px solid var(--bajan-blue);
+  background: white;
+  padding: 10px 18px;
+  font-family: var(--font-accent);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--bajan-blue);
+  box-shadow: 2px 2px 0 rgba(0, 38, 127, 0.15);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.clear-btn:hover {
+  background: var(--bajan-blue);
+  color: white;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 rgba(0, 38, 127, 0.25);
+}
+
+/* Connection Status Badge */
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 4px;
+  border: 2px solid rgba(0, 38, 127, 0.15);
+  background: white;
+  padding: 10px 16px;
+  font-family: var(--font-accent);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+  box-shadow: 2px 2px 0 rgba(0, 38, 127, 0.08);
+}
+
+/* Section Headers */
+.section-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--bajan-blue);
+}
+
+.section-subtitle {
+  font-family: var(--font-accent);
+  font-size: 1rem;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+/* Label Text */
+.label-text {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--bajan-blue);
+}
+
+/* Trident Divider */
+.trident-divider {
+  text-align: center;
+  margin: 2rem 0;
+  color: var(--bajan-gold);
+  font-size: 1.5rem;
+  opacity: 0.6;
+  letter-spacing: 8px;
+}
+
+/* Utility Classes */
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+.font-accent {
+  font-family: var(--font-accent);
 }

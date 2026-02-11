@@ -2,26 +2,78 @@
 
 from __future__ import annotations
 
+import argparse
+import json
+from typing import Any
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Any
+from google import genai
+from google.genai import types
 
 from lib.db.postgres_client import PostgresClient
+from lib.db.chat_schema import ensure_chat_schema
 from lib.db.memgraph_client import MemgraphClient
-from lib.embeddings.google_client import GoogleEmbeddingClient
-from lib.advanced_search_features import AdvancedSearchFeatures
 from lib.chat_agent_v2 import KGChatAgentV2
+from lib.kg_agent_loop import KGAgentLoop
+from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
+from lib.advanced_search_features import AdvancedSearchFeatures
+from lib.embeddings.google_client import GoogleEmbeddingClient
+from lib.utils.config import config
 
 app = FastAPI(title="Parliamentary Search API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _get_postgres() -> PostgresClient:
+    assert postgres is not None
+    return postgres
+
+
+def _get_memgraph() -> MemgraphClient:
+    assert memgraph is not None
+    return memgraph
+
+
+def _get_embedding_client() -> GoogleEmbeddingClient:
+    assert embedding_client is not None
+    return embedding_client
+
+
+def _get_advanced_search() -> AdvancedSearchFeatures:
+    assert advanced_search is not None
+    return advanced_search
+
+
+def _get_chat_agent() -> KGChatAgentV2:
+    assert chat_agent is not None
+    return chat_agent
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    global postgres, memgraph, embedding_client, advanced_search, chat_agent
+    postgres = PostgresClient()
+    memgraph = MemgraphClient()
+    embedding_client = GoogleEmbeddingClient()
+    advanced_search = AdvancedSearchFeatures(
+        postgres=postgres,
+        memgraph=memgraph,
+        embedding_client=embedding_client,
+    )
+    chat_agent = KGChatAgentV2(
+        postgres_client=postgres,
+        embedding_client=embedding_client,
+        enable_thinking=getattr(config, "enable_thinking", False),
+    )
 
 
 class SearchRequest(BaseModel):

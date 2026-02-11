@@ -2,7 +2,6 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -50,7 +49,7 @@ class EmbeddingConfig:
 class VideoConfig:
     """Video processing configuration."""
 
-    youtube_api_key: Optional[str] = os.getenv("YOUTUBE_API_KEY")
+    youtube_api_key: str | None = os.getenv("YOUTUBE_API_KEY")
     segment_minutes: int = int(os.getenv("SEGMENT_MINUTES", "30"))
     overlap_minutes: int = int(os.getenv("OVERLAP_MINUTES", "1"))
 
@@ -74,6 +73,12 @@ class AppConfig:
     video: VideoConfig = field(default_factory=VideoConfig)
     scraping: ScrapingConfig = field(default_factory=ScrapingConfig)
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    chat_trace: bool = os.getenv("CHAT_TRACE", "").lower() in {"1", "true", "on"}
+    enable_thinking: bool = os.getenv("ENABLE_THINKING", "").lower() in {
+        "1",
+        "true",
+        "on",
+    }
 
 
 config = AppConfig()

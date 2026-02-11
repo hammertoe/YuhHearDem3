@@ -38,8 +38,8 @@ YuhHearDem3 is a parliamentary transcription and search system that processes vi
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `transcribe.py` | 938 | Main video transcription script - processes videos in segments |
-| `build_knowledge_graph.py` | 686 | Builds knowledge graphs from transcripts using Gemini LLM |
+| `transcribe.py` | ~950 | Main video transcription script - processes videos in segments |
+| `scripts/kg_extract_from_video.py` | ~200 | Extracts knowledge graphs from transcripts using Gemini LLM |
 | `api/search_api.py` | 580 | FastAPI REST API for hybrid search |
 
 ### Library Modules
@@ -185,41 +185,23 @@ lib/advanced_search_features.py
 
 ### Issues Found
 
-#### 1. Duplicate NOT_FOUND Constants
-- **Location**: `transcribe.py:127` and `transcribe.py:167`
-- **Issue**: Same constant defined twice
-- **Impact**: Low - second definition shadows the first
-- **Fix**: Remove one definition
-
-#### 2. Unused Variables
-- **Location**: `transcribe.py:768` - `consecutive_empty_segments` is set but never checked
-- **Location**: `build_knowledge_graph.py` - Multiple variables created but not fully utilized
-- **Impact**: Low - code clutter
-- **Fix**: Remove unused variables or implement the check logic
-
-#### 3. Type Inconsistencies
-- **Location**: `build_knowledge_graph.py:9` - Uses `Dict, List, Optional, Tuple, Any` instead of modern syntax
-- **Location**: `lib/advanced_search_features.py:5` - Same issue
-- **Location**: `lib/scraping/bill_scraper.py:6` - Same issue
+#### 1. Type Inconsistencies (Partially Fixed)
+- **Location**: `lib/advanced_search_features.py:5` - Uses legacy `Any` type
+- **Location**: `lib/scraping/bill_scraper.py:6` - Uses legacy type imports
+- **Status**: Fixed in `scripts/migrate_transcripts.py` and `lib/utils/config.py`
 - **Impact**: Low - still works but inconsistent with project style
 - **Fix**: Use `dict, list, | None` syntax per AGENTS.md guidelines
 
-#### 4. Mutable Default Arguments
+#### 2. Mutable Default Arguments
 - **Location**: `build_knowledge_graph.py:25-33` - Entity dataclass has mutable defaults
+- **Note**: File may have been refactored to `scripts/kg_extract_from_video.py`
 - **Impact**: Medium - could cause unexpected behavior if instances share state
 - **Fix**: Use `field(default_factory=list)` from dataclasses
 
-#### 5. Inconsistent Error Handling
-- **Location**: `transcribe.py:790-806` - Mix of try/except and tenacity retry
-- **Issue**: Inner retry loop conflicts with outer loop
+#### 3. Inconsistent Error Handling
+- **Location**: `transcribe.py` - Mix of try/except and tenacity retry in some areas
 - **Impact**: Medium - could cause double retry or unexpected behavior
 - **Fix**: Consolidate retry logic
-
-#### 6. Missing Type Hints
-- **Location**: `transcribe.py:110-119` - `define_env_vars` missing return type
-- **Location**: Multiple functions in test files
-- **Impact**: Low - reduces code clarity
-- **Fix**: Add type hints
 
 #### 7. Hardcoded Values
 - **Location**: `api/search_api.py:442-444` - Hardcoded YouTube video ID
@@ -326,19 +308,25 @@ lib/advanced_search_features.py
 
 | Metric | Value |
 |--------|-------|
-| Total Python LOC | ~4,500 |
-| Number of modules | 15+ |
-| Test files | 7 |
-| Documentation files | 18 (in docs/) |
+| Total Python LOC | ~5,000+ |
+| Number of modules | 40+ |
+| Test files | 30+ |
+| Documentation files | 9 (in docs/) |
 | Average function length | ~25 lines |
-| Type hint coverage | ~80% |
+| Type hint coverage | ~85% |
+
+## Recent Improvements
+
+1. **Dead Code Removal**: Removed ~100 lines of unused environment check functions from `transcribe.py`
+2. **Type Hint Modernization**: Updated `scripts/migrate_transcripts.py` and `lib/utils/config.py` to use modern Python 3.10+ syntax (`list`, `dict`, `| None`)
+3. **Code Cleanup**: Removed unused `VideoTranscription`, `Speaker` classes and legacy `get_video_transcription()` function
 
 ## Conclusion
 
 The codebase is well-architected with good separation of concerns. The main issues are:
-1. Security vulnerabilities (SQL injection)
-2. Some code quality inconsistencies
-3. Missing comprehensive error handling
+1. Security vulnerabilities (SQL injection) - requires attention
+2. Some legacy type imports remain in a few files
+3. Missing comprehensive error handling in some areas
 4. Performance optimizations needed for production scale
 
-Overall quality: **Good** (7/10) - Solid foundation with room for improvement in security and maintainability.
+Overall quality: **Good** (7.5/10) - Solid foundation with improving code quality and maintainability.

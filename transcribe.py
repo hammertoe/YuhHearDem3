@@ -1,9 +1,7 @@
 import argparse
 import enum
 import json
-import os
 import re
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -32,96 +30,6 @@ from lib.gemini_finish_reason import (
 
 
 load_dotenv()
-
-# To run this script, set one of the following environment variables:
-# Option A - Google AI Studio API key:
-#   export GOOGLE_API_KEY="your-api-key"
-#
-# Option B - Vertex AI (Google Cloud):
-#   export GOOGLE_GENAI_USE_VERTEXAI="True"
-#   export GOOGLE_CLOUD_PROJECT="your-project-id"
-#   export GOOGLE_CLOUD_LOCATION="your-location"
-#
-# Get a Gemini API key from: https://aistudio.google.com/app/apikey
-
-
-def check_environment() -> bool:
-    check_colab_user_authentication()
-    return check_manual_setup() or check_vertex_ai() or check_colab() or check_local()
-
-
-def check_manual_setup() -> bool:
-    return check_define_env_vars(
-        False,
-        "",
-        "",
-        "",
-    )
-
-
-def check_vertex_ai() -> bool:
-    return False
-
-
-def check_colab() -> bool:
-    return False
-
-
-def check_local() -> bool:
-    vertexai, project, location, api_key = get_vars(os.getenv)
-    return check_define_env_vars(vertexai, project, location, api_key)
-
-
-def check_colab_user_authentication() -> None:
-    pass
-
-
-def get_vars(getenv: Callable[[str, str], str]) -> tuple[bool, str, str, str]:
-    vertexai_str = getenv("GOOGLE_GENAI_USE_VERTEXAI", "")
-    if vertexai_str:
-        vertexai = vertexai_str.lower() in ["true", "1"]
-    else:
-        vertexai = bool(getenv("GOOGLE_CLOUD_PROJECT", ""))
-
-    project = getenv("GOOGLE_CLOUD_PROJECT", "") if vertexai else ""
-    location = getenv("GOOGLE_CLOUD_LOCATION", "") if project else ""
-    api_key = getenv("GOOGLE_API_KEY", "") if not project else ""
-
-    return vertexai, project, location, api_key
-
-
-def check_define_env_vars(
-    vertexai: bool,
-    project: str,
-    location: str,
-    api_key: str,
-) -> bool:
-    match (vertexai, bool(project), bool(location), bool(api_key)):
-        case (True, True, _, _):
-            location = location or "global"
-            define_env_vars(vertexai, project, location, "")
-        case (True, False, _, True):
-            define_env_vars(vertexai, "", "", api_key)
-        case (False, _, _, True):
-            define_env_vars(vertexai, "", "", api_key)
-        case _:
-            return False
-
-    return True
-
-
-def define_env_vars(vertexai: bool, project: str, location: str, api_key: str) -> None:
-    if api_key:
-        os.environ["GOOGLE_API_KEY"] = api_key
-    if project:
-        os.environ["GOOGLE_CLOUD_PROJECT"] = project
-    if location:
-        os.environ["GOOGLE_CLOUD_LOCATION"] = location
-    if vertexai:
-        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = str(vertexai)
-
-
-check_environment()
 client = genai.Client()
 
 
@@ -149,11 +57,7 @@ def url_for_youtube_id(youtube_id: str) -> str:
     return f"{YOUTUBE_URL_PREFIX}{youtube_id}"
 
 
-class Video(enum.Enum):
-    pass
-
-
-class TestVideo(Video):
+class TestVideo(enum.Enum):
     GDM_PODCAST_TRAILER_PT59S = url_for_youtube_id("0pJn3g8dfwk")
     JANE_GOODALL_PT2M42S = "gs://cloud-samples-data/video/JaneGoodall.mp4"
     GDM_ALPHAFOLD_PT7M54S = url_for_youtube_id("gg7WjuFs8F4")
@@ -166,6 +70,9 @@ class DynamicVideo:
 
     name: str
     value: str
+
+
+Video = TestVideo | DynamicVideo
 
 
 @dataclass
@@ -222,18 +129,6 @@ class Transcript(pydantic.BaseModel):
     voice: int
 
 
-class Speaker(pydantic.BaseModel):
-    voice: int
-    name: str
-    position: str
-    role_in_video: str
-
-
-class VideoTranscription(pydantic.BaseModel):
-    task1_transcripts: list[Transcript] = pydantic.Field(default_factory=list)
-    task2_speakers: list[Speaker] = pydantic.Field(default_factory=list)
-
-
 class Legislation(pydantic.BaseModel):
     id: str
     name: str
@@ -273,7 +168,7 @@ def get_generate_content_config(model: Model, video: Video) -> GenerateContentCo
         top_p=DEFAULT_CONFIG.top_p,
         seed=DEFAULT_CONFIG.seed,
         response_mime_type="application/json",
-        response_schema=VideoTranscription,
+        response_schema=VideoTranscriptionEnhanced,
         media_resolution=media_resolution,
         thinking_config=thinking_config,
         max_output_tokens=32768,
@@ -539,69 +434,6 @@ def display_response_info(response: GenerateContentResponse) -> None:
     if not response.text:
         print("❌ No `response.text`")
         return
-
-
-def get_video_transcription_from_response(
-    response: GenerateContentResponse,
-) -> VideoTranscription:
-    if isinstance(response.parsed, VideoTranscription):
-        return response.parsed
-
-    print("❌ Could not parse the JSON response")
-    return VideoTranscription()  # Empty transcription
-
-
-def get_video_transcription(
-    video: Video,
-    video_segment: VideoSegment | None = None,
-    fps: float | None = None,
-    prompt: str | None = None,
-    model: Model | None = None,
-    order_file: str | None = None,
-    order_paper_id: str | None = None,
-) -> VideoTranscription:
-    model = model or Model.DEFAULT
-    model_id = model.value
-
-    fps = fps or get_sampling_frame_rate_for_video(video)
-    video_part = get_video_part(video, video_segment, fps)
-    if not video_part:  # Unsupported source, return an empty transcription
-        return VideoTranscription()
-
-    order_text = ""
-    if order_paper_id:
-        order_text = get_order_paper_from_db(order_paper_id)
-    elif order_file:
-        with open(order_file, "r") as f:
-            order_text = f.read().strip()
-
-    if prompt is None:
-        timecode_spec = get_timecode_spec_for_model_and_video(model, video)
-        order_context = order_text if order_text else "No additional context provided."
-        prompt = VIDEO_TRANSCRIPTION_PROMPT.format(
-            timecode_spec=timecode_spec, order_context=order_context
-        )
-
-    contents = [video_part, prompt.strip()]
-    if order_text:
-        contents.append(Part(text=order_text))
-
-    config = get_generate_content_config(model, video)
-
-    print(f" {video.name} / {model_id} ".center(80, "-"))
-    response = None
-    for attempt in get_retrier():
-        with attempt:
-            response = client.models.generate_content(
-                model=model_id,
-                contents=contents,
-                config=config,
-            )
-            display_response_info(response)
-            raise_if_retryable_finish_reason(response)
-
-    assert isinstance(response, GenerateContentResponse)
-    return get_video_transcription_from_response(response)
 
 
 def print_combined_results(results: dict):

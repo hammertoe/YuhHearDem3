@@ -1,7 +1,5 @@
 # ruff: noqa: E402
-# ruff: noqa: E402
-
-/* ruff: noqa: E402 */#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Export order paper from database to text file for use by transcribe.py."""
 
 from __future__ import annotations

@@ -1,15 +1,105 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import unquote
 
 from psycopg import errors as pg_errors
 
 from lib.db.chat_schema import ensure_chat_schema
 from lib.kg_agent_loop import KGAgentLoop
+from lib.utils.config import config
+
+
+_SRC_MARKDOWN_LINK_RE = re.compile(r"\]\(([^)]+)\)", re.IGNORECASE)
+
+
+def _should_trace() -> bool:
+    """Check if chat tracing is enabled."""
+    return getattr(config, "chat_trace", False)
+
+
+def _truncate_text(text: str, max_len: int = 200) -> str:
+    """Truncate text to max_len with ellipsis."""
+    if not text or len(text) <= max_len:
+        return text or ""
+    return text[: max_len - 3] + "..."
+
+
+def _trace_print(section: str, message: str) -> None:
+    """Print a trace message with consistent formatting."""
+    if not _should_trace():
+        return
+    print(f"🔍 [CHAT_TRACE] {section}")
+    print(f"  {message}")
+
+
+def _trace_section_start(section: str) -> None:
+    """Print a trace section header."""
+    if not _should_trace():
+        return
+    print(f"\n{'=' * 60}")
+    print(f"🔍 [CHAT_TRACE] {section}")
+    print(f"{'=' * 60}")
+
+
+def _trace_section_end() -> None:
+    """Print a trace section footer."""
+    if not _should_trace():
+        return
+    print(f"{'=' * 60}\n")
+
+
+def _extract_answer_citation_ids(answer: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in _SRC_MARKDOWN_LINK_RE.finditer(answer or ""):
+        href = unquote(str(match.group(1) or "").strip())
+        href_lower = href.lower()
+        citation_id = ""
+        if href_lower.startswith("#src:"):
+            citation_id = href[5:]
+        elif href_lower.startswith("source:"):
+            citation_id = href[7:]
+        elif re.match(r"^https?://[^#]+#src:", href, re.IGNORECASE):
+            citation_id = href.split("#src:", 1)[1]
+
+        citation_id = citation_id.strip()
+        if not citation_id or citation_id in seen:
+            continue
+        seen.add(citation_id)
+        out.append(citation_id)
+    return out
+
+
+def _merge_cite_utterance_ids(
+    *, answer: str, cite_utterance_ids: list[str], retrieval: dict[str, Any] | None
+) -> list[str]:
+    answer_ids = _extract_answer_citation_ids(answer)
+    combined = answer_ids + [str(x or "").strip() for x in cite_utterance_ids]
+
+    known = {
+        str(c.get("utterance_id") or "").strip()
+        for c in (retrieval or {}).get("citations", [])
+        if isinstance(c, dict)
+    }
+    known.discard("")
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in combined:
+        uid = str(raw or "").strip()
+        if not uid or uid in seen:
+            continue
+        if known and uid not in known:
+            continue
+        seen.add(uid)
+        out.append(uid)
+    return out
 
 
 @dataclass
@@ -42,6 +132,7 @@ class KGChatAgentV2:
         embedding_client: Any,
         model: str = "gemini-3-flash-preview",
         client: Any | None = None,
+        enable_thinking: bool = False,
     ) -> None:
         self.postgres = postgres_client
         self.embedding = embedding_client
@@ -51,6 +142,7 @@ class KGChatAgentV2:
             embedding_client=self.embedding,
             client=client,
             model=model,
+            enable_thinking=enable_thinking,
         )
 
     def _ensure_chat_schema(self) -> None:
@@ -195,6 +287,14 @@ class KGChatAgentV2:
             raise ValueError("Empty message")
 
         user_message_id = str(uuid.uuid4())
+        _trace_section_start("PROCESS MESSAGE START")
+        _trace_print("Thread ID", thread_id)
+        _trace_print("User Message ID", user_message_id)
+        _trace_print(
+            "User Query", f"{_truncate_text(user_content)} ({len(user_content)} chars)"
+        )
+        _trace_section_end()
+
         self.postgres.execute_update(
             """
             INSERT INTO chat_messages (id, thread_id, role, content, created_at)
@@ -204,15 +304,23 @@ class KGChatAgentV2:
         )
 
         history = self._get_recent_history_for_llm(thread_id)
+        _trace_section_start("AGENT LOOP EXECUTION")
+        _trace_print("History Size", f"{len(history)} messages")
+        _trace_section_end()
+
         result = await self.loop.run(user_message=user_content, history=history)
 
         answer = (
             str(result.get("answer") or "").strip()
             or "I couldn't find enough evidence to answer that."
         )
-        cite_utterance_ids = list(result.get("cite_utterance_ids") or [])
-        focus_node_ids = list(result.get("focus_node_ids") or [])
         retrieval = result.get("retrieval")
+        cite_utterance_ids = _merge_cite_utterance_ids(
+            answer=answer,
+            cite_utterance_ids=list(result.get("cite_utterance_ids") or []),
+            retrieval=retrieval if isinstance(retrieval, dict) else None,
+        )
+        focus_node_ids = list(result.get("focus_node_ids") or [])
 
         assistant_message_id = str(uuid.uuid4())
         metadata = {
@@ -271,6 +379,14 @@ class KGChatAgentV2:
             cite_utterance_ids,
             max_sources=desired_sources,
         )
+
+        _trace_section_start("RESPONSE SUMMARY")
+        _trace_print("Assistant Message ID", assistant_message_id)
+        _trace_print("Answer Length", f"{len(answer)} chars")
+        _trace_print("Citation IDs", f"{len(cite_utterance_ids)} items")
+        _trace_print("Focus Node IDs", f"{len(focus_node_ids)} items")
+        _trace_print("Sources Count", f"{len(sources)} items")
+        _trace_section_end()
 
         return {
             "thread_id": thread_id,

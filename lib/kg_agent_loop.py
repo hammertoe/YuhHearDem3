@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,6 +11,166 @@ from google import genai
 from google.genai import types
 
 from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
+from lib.utils.config import config
+
+
+def _should_trace() -> bool:
+    """Check if chat tracing is enabled."""
+    return getattr(config, "chat_trace", False)
+
+
+def _start_timer() -> float:
+    """Start a timer and return the start time."""
+    return time.perf_counter()
+
+
+def _end_timer(start_time: float) -> float:
+    """End a timer and return elapsed seconds."""
+    return time.perf_counter() - start_time
+
+
+def _format_duration(seconds: float) -> str:
+    """Format duration as ms or seconds with 2 decimal places."""
+    if seconds < 1:
+        return f"{seconds * 1000:.0f}ms"
+    return f"{seconds:.2f}s"
+
+
+def _format_node(node: dict[str, Any]) -> str:
+    """Format a single KG node for trace logging."""
+    node_id = node.get("id", "?")
+    node_label = node.get("label", "?")[:30]
+    node_type = node.get("type", "?")
+    return f"{node_id} ({node_type}): {node_label}"
+
+
+def _format_edge(edge: dict[str, Any]) -> str:
+    """Format a single KG edge for trace logging."""
+    edge_id = edge.get("id", "?")[:20]
+    pred = edge.get("predicate", "?")[:30]
+    source = edge.get("source_label", "?")[:20]
+    target = edge.get("target_label", "?")[:20]
+    return f"{edge_id}: {source} --[{pred}]--> {target}"
+
+
+def _format_citation(citation: dict[str, Any]) -> str:
+    """Format a single citation for trace logging."""
+    uid = citation.get("utterance_id", "?")
+    speaker = citation.get("speaker_name", "?")[:20]
+    text_preview = (citation.get("text", "") or "")[:60]
+    return f"{uid}: {speaker} said '{text_preview}...'"
+
+
+def _format_tool_result_summary(result: dict[str, Any]) -> str:
+    """Format a kg_hybrid_graph_rag result for trace logging."""
+    out: list[str] = []
+    out.append(f"query='{result.get('query', '?')[:50]}...'")
+    out.append(f"hops={result.get('hops', '?')}")
+    out.append(f"seeds_count={len(result.get('seeds', []))}")
+    out.append(f"nodes_count={len(result.get('nodes', []))}")
+    out.append(f"edges_count={len(result.get('edges', []))}")
+    out.append(f"citations_count={len(result.get('citations', []))}")
+
+    if result.get("nodes") and len(result["nodes"]) <= 5:
+        node_labels = [f"{n.get('label', '?')[:20]}" for n in result["nodes"][:3]]
+        out.append(f"nodes_preview={node_labels}")
+
+    if result.get("citations") and len(result["citations"]) <= 5:
+        cite_ids = [f"{c.get('utterance_id', '?')}" for c in result["citations"][:3]]
+        out.append(f"citations_preview={cite_ids}")
+
+    return ", ".join(out)
+
+
+def _truncate_text(text: str, max_len: int = 300) -> str:
+    """Truncate text to max_len with ellipsis."""
+    if not text or len(text) <= max_len:
+        return text or ""
+    return text[: max_len - 3] + "..."
+
+
+def _format_content_part_summary(part: types.Part) -> dict[str, Any]:
+    """Format a content part for trace logging."""
+    if part.text:
+        return {"type": "text", "preview": _truncate_text(part.text, 300)}
+    if part.function_call:
+        fc = part.function_call
+        return {
+            "type": "function_call",
+            "name": getattr(fc, "name", ""),
+            "args_keys": list(dict(fc.args or {}).keys()) if fc.args else [],
+        }
+    if part.function_response:
+        return {"type": "function_response", "name": part.function_response.name or ""}
+    return {"type": "unknown"}
+
+
+def _format_contents_summary(contents: list[types.Content]) -> list[dict[str, Any]]:
+    """Format contents list for trace logging."""
+    if not contents:
+        return []
+    result: list[dict[str, Any]] = []
+    for c in contents:
+        parts_list = getattr(c, "parts", None) or []
+        parts_summary = [_format_content_part_summary(p) for p in parts_list]
+        result.append({"role": c.role or "unknown", "parts": parts_summary})
+    return result
+
+
+def _serialize_content_part(part: types.Part) -> dict[str, Any]:
+    """Serialize a content part to dict for raw logging."""
+    if part.text:
+        return {"type": "text", "content": part.text}
+    if part.function_call:
+        fc = part.function_call
+        return {
+            "type": "function_call",
+            "name": getattr(fc, "name", ""),
+            "args": dict(fc.args) if fc.args else {},
+        }
+    if part.function_response:
+        return {
+            "type": "function_response",
+            "name": part.function_response.name or "",
+            "response": part.function_response.response,
+        }
+    return {"type": "unknown"}
+
+
+def _serialize_contents(contents: list[types.Content]) -> list[dict[str, Any]]:
+    """Serialize contents list for raw logging."""
+    if not contents:
+        return []
+    result: list[dict[str, Any]] = []
+    for c in contents:
+        parts_list = getattr(c, "parts", None) or []
+        parts_serialized = [_serialize_content_part(p) for p in parts_list]
+        result.append({"role": c.role or "unknown", "parts": parts_serialized})
+    return result
+
+
+def _trace_print(trace_id: str, section: str, message: str) -> None:
+    """Print a trace message with consistent formatting."""
+    if not _should_trace():
+        return
+    print(f"🔍 [TRACE {trace_id}] {section}")
+    print(f"  {message}")
+
+
+def _trace_section_start(trace_id: str, section: str) -> None:
+    """Print a trace section header."""
+    if not _should_trace():
+        return
+    print(f"\n{'=' * 60}")
+    print(f"🔍 [TRACE {trace_id}] {section}")
+    print(f"{'=' * 60}")
+
+
+def _trace_section_end(trace_id: str) -> None:
+    """Print a trace section footer."""
+    if not _should_trace():
+        return
+    print(f"{'=' * 60}\n")
 
 
 AGENT_RESPONSE_SCHEMA: dict[str, Any] = {
@@ -158,11 +320,13 @@ class KGAgentLoop:
         client: Any | None = None,
         model: str = "gemini-3-flash-preview",
         max_tool_iterations: int = 4,
+        enable_thinking: bool = False,
     ) -> None:
         self.postgres = postgres
         self.embedding_client = embedding_client
         self.model = model
         self.max_tool_iterations = max_tool_iterations
+        self.enable_thinking = enable_thinking
 
         if client is not None:
             self.client = client
@@ -251,49 +415,85 @@ class KGAgentLoop:
             out.append(_ToolCall(name=str(name), args=dict(args or {})))
         return out
 
-    async def _call_llm(self, contents: list[types.Content]) -> Any:
-        try:
-            config = types.GenerateContentConfig(
-                system_instruction=self._system_prompt(),
-                tools=self._tool_declarations(),
-                temperature=0.2,
-                max_output_tokens=2048,
-                response_mime_type="application/json",
-                response_schema=AGENT_RESPONSE_SCHEMA,
-            )
-            return await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=contents,
-                config=config,
-            )
-        except Exception:
-            # Some model/tool combinations reject response_schema. Fall back to
-            # best-effort JSON (still enforced in the system prompt).
-            config = types.GenerateContentConfig(
-                system_instruction=self._system_prompt(),
-                tools=self._tool_declarations(),
-                temperature=0.2,
-                max_output_tokens=2048,
-            )
-            return await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=contents,
-                config=config,
-            )
+    async def _call_llm(self, contents: list[types.Content], is_tool_call: bool) -> Any:
+        config_params: dict[str, Any] = {
+            "system_instruction": self._system_prompt(),
+            "tools": self._tool_declarations(),
+            "temperature": 0.2,
+            "max_output_tokens": 2048,
+        }
+        if not is_tool_call:
+            config_params["response_schema"] = AGENT_RESPONSE_SCHEMA
+            config_params["response_mime_type"] = "application/json"
+        if not self.enable_thinking:
+            config_params["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+        config = types.GenerateContentConfig(**config_params)
+        return await self.client.aio.models.generate_content(
+            model=self.model,
+            contents=contents,
+            config=config,
+        )
 
     async def run(
         self, *, user_message: str, history: list[dict[str, str]]
     ) -> dict[str, Any]:
+        trace_id = str(uuid.uuid4())[:8]
+        total_start = _start_timer()
+
+        _trace_section_start(trace_id, "KG AGENT LOOP START")
+        _trace_print(trace_id, "User Query", _truncate_text(user_message, 200))
+        _trace_print(
+            trace_id,
+            "History",
+            f"{len(history)} messages (last {min(3, len(history))} shown if tracing enabled)",
+        )
+        _trace_section_end(trace_id)
+
         contents = self._messages_to_contents(history, user_message)
         last_retrieval: dict[str, Any] | None = None
 
-        response = await self._call_llm(contents)
+        _trace_section_start(trace_id, "ITERATION 0 - LLM CALL")
+        _trace_print(trace_id, "Context Summary", f"{len(contents)} content parts")
+        if _should_trace():
+            for i, c in enumerate(_format_contents_summary(contents)):
+                print(f"    [{i}] {c['role']}: {c['parts']}")
+            print(f"\n🔍 [TRACE {trace_id}] RAW CONTENTS SENT TO LLM")
+            serialized = _serialize_contents(contents)
+            for i, c in enumerate(serialized):
+                print(f"\n  [{i}] Role: {c['role']}")
+                for j, p in enumerate(c.get("parts", [])):
+                    p_type = p.get("type", "unknown")
+                    print(f"    [{j}] Type: {p_type}")
+                    if p_type == "text":
+                        print(f"        Content: {p.get('content', '')}")
+                    elif p_type == "function_call":
+                        print(f"        Name: {p.get('name', '')}")
+                        print(f"        Args: {p.get('args', {})}")
+                    elif p_type == "function_response":
+                        print(f"        Name: {p.get('name', '')}")
+                        print(
+                            f"        Response type: {type(p.get('response', {})).__name__}"
+                        )
+            print(f"\n{'=' * 60}\n")
+        llm_start = _start_timer()
+        response = await self._call_llm(contents, is_tool_call=True)
+        llm_duration = _end_timer(llm_start)
+        _trace_print(trace_id, "Duration", _format_duration(llm_duration))
+        if _should_trace():
+            response_text = getattr(response, "text", None) or ""
+            print(f"\n🔍 [TRACE {trace_id}] RAW LLM RESPONSE")
+            print(f"  Length: {len(response_text)} chars")
+            print(f"  Content:\n{response_text}")
+            print(f"\n{'=' * 60}\n")
+        _trace_section_end(trace_id)
+
         iterations = 0
 
         while True:
-            # Preserve the model-provided content object when continuing.
-            # Reconstructing functionCall parts can drop required fields
-            # (e.g., thought signatures), causing API errors.
+            _trace_section_start(
+                trace_id, f"PARSING LLM RESPONSE (iteration {iterations})"
+            )
+
             candidates = getattr(response, "candidates", None)
             if candidates:
                 cand0 = candidates[0]
@@ -302,17 +502,39 @@ class KGAgentLoop:
                     contents.append(model_content)
 
             function_calls = self._extract_function_calls(response)
+
             if not function_calls:
+                _trace_print(trace_id, "Function Calls", "None - loop complete")
+                _trace_section_end(trace_id)
                 break
+
+            _trace_print(
+                trace_id,
+                "Function Calls",
+                f"{len(function_calls)} call(s): {[fc.name for fc in function_calls]}",
+            )
+
+            _trace_section_end(trace_id)
 
             iterations += 1
             if iterations > self.max_tool_iterations:
+                _trace_print(
+                    trace_id,
+                    "Limit",
+                    f"Max tool iterations ({self.max_tool_iterations}) reached",
+                )
                 break
 
-            # Execute tools and add results
+            _trace_section_start(trace_id, f"EXECUTING TOOLS (iteration {iterations})")
             result_parts: list[types.Part] = []
             for fc in function_calls:
                 if fc.name == "kg_hybrid_graph_rag":
+                    _trace_print(
+                        trace_id,
+                        "Tool Call",
+                        f"kg_hybrid_graph_rag(query={_truncate_text(str(fc.args.get('query', '')), 100)}, hops={fc.args.get('hops', 1)}, seed_k={fc.args.get('seed_k', 8)})",
+                    )
+                    tool_start = _start_timer()
                     tool_result = kg_hybrid_graph_rag(
                         postgres=self.postgres,
                         embedding_client=self.embedding_client,
@@ -322,7 +544,21 @@ class KGAgentLoop:
                         max_edges=int(fc.args.get("max_edges", 60)),
                         max_citations=int(fc.args.get("max_citations", 12)),
                     )
+                    tool_duration = _end_timer(tool_start)
                     last_retrieval = tool_result
+
+                    if _should_trace():
+                        _trace_print(
+                            trace_id,
+                            "Tool Duration",
+                            _format_duration(tool_duration),
+                        )
+                        _trace_print(
+                            trace_id,
+                            "Tool Result",
+                            _format_tool_result_summary(tool_result),
+                        )
+
                     result_parts.append(
                         types.Part.from_function_response(
                             name=fc.name,
@@ -330,6 +566,11 @@ class KGAgentLoop:
                         )
                     )
                 else:
+                    _trace_print(
+                        trace_id,
+                        "Tool Error",
+                        f"unknown tool: {fc.name}",
+                    )
                     result_parts.append(
                         types.Part.from_function_response(
                             name=fc.name,
@@ -338,8 +579,96 @@ class KGAgentLoop:
                     )
 
             contents.append(types.Content(role="user", parts=result_parts))
-            response = await self._call_llm(contents)
+            if _should_trace() and result_parts:
+                _trace_print(
+                    trace_id,
+                    "Tool Response to LLM",
+                    f"function_response(name='kg_hybrid_graph_rag') with {len(result_parts)} part(s)",
+                )
+                response_summary = (
+                    result_parts[0].function_response.response
+                    if result_parts[0].function_response
+                    else {}
+                )
+                if isinstance(response_summary, dict):
+                    for key in ["query", "hops", "nodes", "edges", "citations"]:
+                        val = response_summary.get(key)
+                        if isinstance(val, list):
+                            _trace_print(trace_id, f"  {key}_count", f"{len(val)}")
+                        elif val is not None:
+                            _trace_print(trace_id, f"  {key}", str(val)[:100])
 
+                    print(f"\n🔍 [TRACE {trace_id}] ACTUAL KG DATA SENT TO LLM")
+                    nodes = response_summary.get("nodes", [])[:5]
+                    edges = response_summary.get("edges", [])[:5]
+                    citations = response_summary.get("citations", [])[:5]
+
+                    if nodes:
+                        print(
+                            f"  Nodes (first {len(nodes)} of {len(response_summary.get('nodes', []))}):"
+                        )
+                        for i, n in enumerate(nodes):
+                            print(f"    [{i}] {_format_node(n)}")
+
+                    if edges:
+                        print(
+                            f"\n  Edges (first {len(edges)} of {len(response_summary.get('edges', []))}):"
+                        )
+                        for i, e in enumerate(edges):
+                            print(f"    [{i}] {_format_edge(e)}")
+
+                    if citations:
+                        print(
+                            f"\n  Citations (first {len(citations)} of {len(response_summary.get('citations', []))}):"
+                        )
+                        for i, c in enumerate(citations):
+                            print(f"    [{i}] {_format_citation(c)}")
+
+                    print(f"\n{'=' * 60}\n")
+
+            _trace_section_end(trace_id)
+
+            _trace_section_start(trace_id, f"ITERATION {iterations} - LLM CALL")
+            _trace_print(trace_id, "Context Summary", f"{len(contents)} content parts")
+            if _should_trace():
+                for i, c in enumerate(_format_contents_summary(contents)):
+                    print(f"    [{i}] {c['role']}: {len(c['parts'])} part(s)")
+                    for j, p in enumerate(c["parts"][:2]):
+                        p_type = p.get("type", "unknown")
+                        preview = p.get("preview", "")
+                        if preview:
+                            print(f"        [{j}] {p_type}: {preview}")
+                print(f"\n🔍 [TRACE {trace_id}] RAW CONTENTS SENT TO LLM")
+                serialized = _serialize_contents(contents)
+                for i, c in enumerate(serialized):
+                    print(f"\n  [{i}] Role: {c['role']}")
+                    for j, p in enumerate(c.get("parts", [])):
+                        p_type = p.get("type", "unknown")
+                        print(f"    [{j}] Type: {p_type}")
+                        if p_type == "text":
+                            print(f"        Content: {p.get('content', '')}")
+                        elif p_type == "function_call":
+                            print(f"        Name: {p.get('name', '')}")
+                            print(f"        Args: {p.get('args', {})}")
+                        elif p_type == "function_response":
+                            print(f"        Name: {p.get('name', '')}")
+                            print(
+                                f"        Response type: {type(p.get('response', {})).__name__}"
+                            )
+                print(f"\n{'=' * 60}\n")
+            llm_start = _start_timer()
+            response = await self._call_llm(contents, is_tool_call=False)
+            llm_duration = _end_timer(llm_start)
+            _trace_print(trace_id, "Duration", _format_duration(llm_duration))
+            if _should_trace():
+                response_text = getattr(response, "text", None) or ""
+                print(f"\n🔍 [TRACE {trace_id}] RAW LLM RESPONSE")
+                print(f"  Length: {len(response_text)} chars")
+                print(f"  Content:\n{response_text}")
+                print(f"\n{'=' * 60}\n")
+            _trace_section_end(trace_id)
+
+        _trace_section_start(trace_id, "FINAL ANSWER PARSING")
         parsed = _parse_json_best_effort(getattr(response, "text", None))
         if not parsed:
             parsed = {
@@ -360,4 +689,17 @@ class KGAgentLoop:
 
         parsed["answer"] = _clean_answer_text(parsed.get("answer"))
         parsed["retrieval"] = last_retrieval
+
+        total_duration = _end_timer(total_start)
+        if _should_trace():
+            _trace_print(
+                trace_id,
+                "Final Answer Summary",
+                f"length={len(parsed.get('answer', ''))} chars, "
+                f"cite_ids={parsed.get('cite_utterance_ids', [])[:3]}{'...' if len(parsed.get('cite_utterance_ids', [])) > 3 else ''}, "
+                f"focus_nodes={parsed.get('focus_node_ids', [])[:3]}{'...' if len(parsed.get('focus_node_ids', [])) > 3 else ''}",
+            )
+            _trace_print(trace_id, "Total Duration", _format_duration(total_duration))
+            _trace_section_end(trace_id)
+
         return parsed

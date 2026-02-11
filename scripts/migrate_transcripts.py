@@ -3,7 +3,6 @@
 import json
 import argparse
 from datetime import datetime
-from typing import List, Dict, Any
 
 from lib.db.postgres_client import PostgresClient
 from lib.db.memgraph_client import MemgraphClient
@@ -18,21 +17,21 @@ from lib.id_generators import (
 )
 
 
-def load_transcript_data(filepath: str) -> Dict[str, Any]:
+def load_transcript_data(filepath: str) -> dict[str, object]:
     """Load transcript JSON file."""
     with open(filepath, "r") as f:
         return json.load(f)
 
 
-def load_knowledge_graph_data(filepath: str) -> Dict[str, Any]:
+def load_knowledge_graph_data(filepath: str) -> dict[str, object]:
     """Load knowledge graph JSON file."""
     with open(filepath, "r") as f:
         return json.load(f)
 
 
 def migrate_speakers(
-    postgres_client: PostgresClient, speakers_data: List[Dict[str, Any]]
-) -> Dict[str, str]:
+    postgres_client: PostgresClient, speakers_data: list[dict[str, object]]
+) -> dict[str, str]:
     """Migrate speakers to PostgreSQL."""
     speaker_id_map = {}
 
@@ -66,13 +65,13 @@ def migrate_speakers(
 
         speaker_id_map[speaker.get("speaker_id", "")] = speaker_id
 
-    print(f"✅ Migrated {len(speakers)} speakers")
+    print(f"✅ Migrated {len(speakers_data)} speakers")
     return speaker_id_map
 
 
 def migrate_bills(
-    postgres_client: PostgresClient, legislation_data: List[Dict[str, Any]]
-) -> Dict[str, str]:
+    postgres_client: PostgresClient, legislation_data: list[dict[str, object]]
+) -> dict[str, str]:
     """Migrate bills to PostgreSQL."""
     bill_id_map = {}
 
@@ -111,7 +110,7 @@ def migrate_bills(
 def migrate_paragraphs_and_sentences(
     postgres_client: PostgresClient,
     embedding_client: GoogleEmbeddingClient,
-    transcripts: List[Dict[str, Any]],
+    transcripts: list[dict[str, object]],
     video_id: str,
     video_title: str,
     video_date: str,
@@ -191,7 +190,7 @@ def migrate_paragraphs_and_sentences(
 
 
 def migrate_knowledge_graph_to_memgraph(
-    memgraph_client: MemgraphClient, kg_data: Dict[str, Any]
+    memgraph_client: MemgraphClient, kg_data: dict[str, object]
 ) -> None:
     """Migrate knowledge graph nodes and edges to Memgraph."""
     nodes = kg_data.get("nodes", [])
@@ -246,7 +245,7 @@ def migrate_knowledge_graph_to_memgraph(
 
 
 def migrate_video_metadata(
-    postgres_client: PostgresClient, transcript_data: Dict[str, Any]
+    postgres_client: PostgresClient, transcript_data: dict[str, object]
 ) -> str:
     """Migrate video metadata."""
     video_metadata = transcript_data.get("video_metadata", {})
