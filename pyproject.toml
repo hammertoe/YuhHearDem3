@@ -1,0 +1,43 @@
+[project]
+name = "yuhheardem"
+version = "1.0.0"
+description = "Parliamentary Search API - Barbados Hansard Knowledge Graph"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.30.0",
+    "psycopg[binary,pool]>=3.2.0",
+    "google-genai>=0.8.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "rapidfuzz>=3.6.0",
+    "tenacity>=8.2.0",
+    "yt-dlp>=2024.0.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.15.0",
+    "mypy>=1.19.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+exclude = [".git", ".venv", "venv", "__pycache__", "*.pyc", ".pytest_cache", "htmlcov"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
