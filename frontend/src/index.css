@@ -99,8 +99,6 @@ body {
 }
 
 .chat-list {
-  max-height: 520px;
-  overflow: auto;
   padding: 8px;
   border-radius: 14px;
   border: 1px solid rgba(20, 19, 21, 0.08);

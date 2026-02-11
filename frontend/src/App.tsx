@@ -382,11 +382,8 @@ function App() {
           <div>
             <div className="flex items-baseline gap-3">
               <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-ink">
-                YuhHearDem
+                Yuh Hear Dem?
               </h1>
-              <span className="rounded-full border border-ink/10 bg-white/60 px-2 py-1 text-xs text-ink/70 backdrop-blur">
-                hybrid graph-rag
-              </span>
             </div>
             <p className="mt-2 max-w-2xl text-sm sm:text-base text-ink/70">
               No more long talk - get straight to what dey really say.
