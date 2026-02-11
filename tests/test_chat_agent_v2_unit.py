@@ -1,4 +1,4 @@
-from lib.chat_agent_v2 import _extract_answer_citation_ids, _merge_cite_utterance_ids
+from lib.chat_agent_v2 import KGChatAgentV2, _extract_answer_citation_ids, _merge_cite_utterance_ids
 
 
 def test_extract_answer_citation_ids_should_parse_supported_link_formats() -> None:
@@ -59,3 +59,51 @@ def test_merge_cite_utterance_ids_should_match_known_ids_with_utt_prefix_variant
     )
 
     assert got == ["utt_abc", "utt_def"]
+
+
+def test_merge_cite_utterance_ids_should_keep_well_formed_unknown_ids_for_db_fallback() -> None:
+    retrieval = {
+        "citations": [
+            {"utterance_id": "Syxyah7QIaM:3383"},
+        ]
+    }
+
+    got = _merge_cite_utterance_ids(
+        answer="Known [1](#src:Syxyah7QIaM:3383) and fallback [2](#src:Q1VXHDpBeAg:1472)",
+        cite_utterance_ids=["Syxyah7QIaM:3383"],
+        retrieval=retrieval,
+    )
+
+    assert got == ["Syxyah7QIaM:3383", "Q1VXHDpBeAg:1472"]
+
+
+class _FakePostgresForFetch:
+    def execute_query(self, _sql: str, _params=None):
+        return [
+            (
+                "Q1VXHDpBeAg:1472",
+                "Q1VXHDpBeAg",
+                1472,
+                "24:32",
+                "But I will be very specific...",
+                "r_r_straughn_1",
+                "Mr. Ryan Straughn",
+                "Minister in the Ministry of Finance",
+                "The Honourable The House - Tuesday 9th December, 2025 - Part 1",
+                "2025-12-09",
+            )
+        ]
+
+
+def test_fetch_source_by_id_should_prefer_enriched_speaker_name_and_title() -> None:
+    agent = KGChatAgentV2(
+        postgres_client=_FakePostgresForFetch(),
+        embedding_client=object(),
+        client=object(),
+    )
+
+    source = agent._fetch_source_by_id("Q1VXHDpBeAg:1472")
+
+    assert source is not None
+    assert source.speaker_name == "Mr. Ryan Straughn"
+    assert source.speaker_title == "Minister in the Ministry of Finance"

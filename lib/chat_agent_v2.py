@@ -109,6 +109,16 @@ def _citation_lookup_keys(citation_id: str) -> list[str]:
     return out
 
 
+def _looks_like_utterance_id(citation_id: str) -> bool:
+    """Heuristic for plausible utterance IDs used by sentence records."""
+    normalized = _normalize_citation_id(citation_id)
+    if not normalized:
+        return False
+    if normalized.startswith("utt_"):
+        normalized = normalized[4:]
+    return re.match(r"^[A-Za-z0-9_-]+:\d+$", normalized) is not None
+
+
 def _merge_cite_utterance_ids(
     *, answer: str, cite_utterance_ids: list[str], retrieval: dict[str, Any] | None
 ) -> list[str]:
@@ -130,24 +140,23 @@ def _merge_cite_utterance_ids(
     seen: set[str] = set()
     for raw in combined:
         uid = _normalize_citation_id(str(raw or ""))
-        if not uid or uid in seen:
-            continue
-        if known_lookup:
-            matched: str | None = None
-            for key in _citation_lookup_keys(uid):
-                if key in known_lookup:
-                    matched = known_lookup[key]
-                    break
-            if not matched:
-                continue
-            if matched in seen:
-                continue
-            seen.add(matched)
-            out.append(matched)
+        if not uid:
             continue
 
-        seen.add(uid)
-        out.append(uid)
+        resolved_uid = uid
+        if known_lookup:
+            for key in _citation_lookup_keys(uid):
+                if key in known_lookup:
+                    resolved_uid = known_lookup[key]
+                    break
+            else:
+                if not _looks_like_utterance_id(uid):
+                    continue
+
+        if resolved_uid in seen:
+            continue
+        seen.add(resolved_uid)
+        out.append(resolved_uid)
     return out
 
 
@@ -352,9 +361,34 @@ class KGChatAgentV2:
         try:
             rows = self.postgres.execute_query(
                 """
-                SELECT s.id, s.youtube_video_id, s.seconds_since_start, s.timestamp_str,
-                       s.text, s.speaker_id, s.video_title, s.video_date
+                SELECT
+                    s.id,
+                    s.youtube_video_id,
+                    s.seconds_since_start,
+                    s.timestamp_str,
+                    s.text,
+                    s.speaker_id,
+                    COALESCE(sp.full_name, sp.normalized_name, s.speaker_id) AS speaker_name,
+                    COALESCE(vrole.role_label, sp.position, sp.title, '') AS speaker_title,
+                    s.video_title,
+                    s.video_date
                 FROM sentences s
+                LEFT JOIN speakers sp ON sp.id = s.speaker_id
+                LEFT JOIN LATERAL (
+                    SELECT svr.role_label
+                    FROM speaker_video_roles svr
+                    WHERE svr.youtube_video_id = s.youtube_video_id
+                      AND svr.speaker_id = s.speaker_id
+                    ORDER BY
+                        CASE svr.role_kind
+                            WHEN 'portfolio' THEN 1
+                            WHEN 'office' THEN 2
+                            WHEN 'session_role' THEN 3
+                            ELSE 9
+                        END,
+                        svr.role_label
+                    LIMIT 1
+                ) AS vrole ON TRUE
                 WHERE s.id = %s
                 LIMIT 1
                 """,
@@ -370,11 +404,11 @@ class KGChatAgentV2:
                 seconds_since_start=row[2],
                 timestamp_str=row[3] or "",
                 speaker_id=row[5] or "",
-                speaker_name=row[5] or "",
-                speaker_title=None,
+                speaker_name=row[6] or "",
+                speaker_title=row[7] or None,
                 text=row[4] or "",
-                video_title=row[6] or "",
-                video_date=str(row[7]) if row[7] else None,
+                video_title=row[8] or "",
+                video_date=str(row[9]) if row[9] else None,
             )
         except Exception:
             return None
