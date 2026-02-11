@@ -3,7 +3,11 @@
 ALTER TABLE kg_edges
     ADD COLUMN IF NOT EXISTS predicate_raw TEXT;
 
-CREATE OR REPLACE VIEW kg_edges_with_details AS
+-- If an older version of the view exists without predicate_raw, CREATE OR REPLACE
+-- can fail because it is not allowed to change the view's column set.
+DROP VIEW IF EXISTS kg_edges_with_details;
+
+CREATE VIEW kg_edges_with_details AS
 SELECT
     e.id AS edge_id,
     e.predicate,

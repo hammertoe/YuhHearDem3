@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from psycopg import errors as pg_errors
 from google import genai
 from google.genai.types import GenerateContentConfig
 from tenacity import (
@@ -17,6 +18,7 @@ from tenacity import (
 )
 
 from lib.db.postgres_client import PostgresClient
+from lib.db.chat_schema import ensure_chat_schema
 from lib.db.pgvector import vector_literal
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import normalize_label
@@ -88,10 +90,17 @@ class KGChatAgent:
     ):
         self.postgres = postgres_client
         self.embedding = embedding_client
+        self._chat_schema_ensured = False
 
         api_key = self._get_api_key()
         self.client = genai.Client(api_key=api_key)
         self.model = model
+
+    def _ensure_chat_schema(self) -> None:
+        if self._chat_schema_ensured:
+            return
+        ensure_chat_schema(self.postgres)
+        self._chat_schema_ensured = True
 
     def _get_api_key(self) -> str:
         import os
@@ -103,15 +112,25 @@ class KGChatAgent:
 
     def create_thread(self, title: str | None = None) -> str:
         """Create a new chat thread and return its ID."""
+        self._ensure_chat_schema()
         thread_id = str(uuid.uuid4())
-        self.postgres.execute_update(
-            "INSERT INTO chat_threads (id, title) VALUES (%s, %s)",
-            (thread_id, title),
-        )
+        try:
+            self.postgres.execute_update(
+                "INSERT INTO chat_threads (id, title) VALUES (%s, %s)",
+                (thread_id, title),
+            )
+        except pg_errors.UndefinedTable:
+            self._chat_schema_ensured = False
+            self._ensure_chat_schema()
+            self.postgres.execute_update(
+                "INSERT INTO chat_threads (id, title) VALUES (%s, %s)",
+                (thread_id, title),
+            )
         return thread_id
 
     def get_thread(self, thread_id: str) -> dict[str, Any] | None:
         """Get thread metadata and messages."""
+        self._ensure_chat_schema()
         rows = self.postgres.execute_query(
             """
             SELECT ct.id, ct.title, ct.created_at, ct.updated_at
@@ -449,6 +468,7 @@ Answer the question. Return JSON only."""
 
     def process_message(self, thread_id: str, user_content: str) -> ChatResponse:
         """Process a user message and return assistant response."""
+        self._ensure_chat_schema()
         thread = self.get_thread(thread_id)
         if thread is None:
             raise ValueError(f"Thread {thread_id} not found")

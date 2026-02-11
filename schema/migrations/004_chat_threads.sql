@@ -32,8 +32,3 @@ CREATE TABLE IF NOT EXISTS chat_thread_state (
 CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_id ON chat_messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_thread_state_thread_id ON chat_thread_state(thread_id);
-
--- Indexes for efficient queries
-CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_id ON chat_threads(thread_id);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_chat_thread_state_thread_id ON chat_thread_state(thread_id);

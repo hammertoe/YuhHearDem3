@@ -11,13 +11,13 @@ from lib.db.postgres_client import PostgresClient
 from lib.db.memgraph_client import MemgraphClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.advanced_search_features import AdvancedSearchFeatures
-from lib.chat_agent import KGChatAgent
+from lib.chat_agent_v2 import KGChatAgentV2
 
 app = FastAPI(title="Parliamentary Search API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -138,6 +138,20 @@ class ChatCitation(BaseModel):
     text: str
     video_title: str | None
     video_date: str | None
+    youtube_url: str | None = None
+
+
+class ChatSource(BaseModel):
+    utterance_id: str
+    youtube_video_id: str
+    youtube_url: str
+    seconds_since_start: int
+    timestamp_str: str
+    speaker_id: str
+    speaker_name: str
+    text: str
+    video_title: str | None
+    video_date: str | None
 
 
 class ChatFocusNode(BaseModel):
@@ -164,17 +178,19 @@ class ChatMessageRequest(BaseModel):
 class ChatMessageResponse(BaseModel):
     thread_id: str
     assistant_message: ThreadMessage
-    citations: list[ChatCitation]
-    focus_nodes: list[ChatFocusNode]
-    used_edges: list[ChatUsedEdge]
-    debug: dict[str, Any] | None
+    citations: list[ChatCitation] = []
+    focus_nodes: list[ChatFocusNode] = []
+    used_edges: list[ChatUsedEdge] = []
+    sources: list[ChatSource] = []
+    focus_node_ids: list[str] = []
+    debug: dict[str, Any] | None = None
 
 
 postgres: PostgresClient | None = None
 memgraph: MemgraphClient | None = None
 embedding_client: GoogleEmbeddingClient | None = None
 advanced_search: AdvancedSearchFeatures | None = None
-chat_agent: KGChatAgent | None = None
+chat_agent: KGChatAgentV2 | None = None
 
 
 def _get_postgres() -> PostgresClient:
@@ -197,7 +213,7 @@ def _get_advanced_search() -> AdvancedSearchFeatures:
     return advanced_search
 
 
-def _get_chat_agent() -> KGChatAgent:
+def _get_chat_agent() -> KGChatAgentV2:
     assert chat_agent is not None
     return chat_agent
 
@@ -213,7 +229,7 @@ def _startup() -> None:
         memgraph=memgraph,
         embedding_client=embedding_client,
     )
-    chat_agent = KGChatAgent(
+    chat_agent = KGChatAgentV2(
         postgres_client=postgres,
         embedding_client=embedding_client,
     )
@@ -821,49 +837,14 @@ async def send_message(thread_id: str, request: ChatMessageRequest):
     """Send a message to a thread and get assistant response."""
     try:
         agent = _get_chat_agent()
-        response = agent.process_message(thread_id, request.content)
+        response = await agent.process_message(thread_id, request.content)
 
         return ChatMessageResponse(
             thread_id=thread_id,
-            assistant_message=ThreadMessage(
-                id=response.assistant_message["id"],
-                role=response.assistant_message["role"],
-                content=response.assistant_message["content"],
-                created_at=response.assistant_message["created_at"],
-                metadata=None,
-            ),
-            citations=[
-                ChatCitation(
-                    utterance_id=c.utterance_id,
-                    youtube_video_id=c.youtube_video_id,
-                    seconds_since_start=c.seconds_since_start,
-                    timestamp_str=c.timestamp_str,
-                    speaker_id=c.speaker_id,
-                    speaker_name=c.speaker_name,
-                    text=c.text,
-                    video_title=c.video_title,
-                    video_date=c.video_date,
-                )
-                for c in response.citations
-            ],
-            focus_nodes=[
-                ChatFocusNode(id=n["id"], label=n["label"], type=n["type"])
-                for n in response.focus_nodes
-            ],
-            used_edges=[
-                ChatUsedEdge(
-                    id=e.id,
-                    source_id=e.source_id,
-                    predicate=e.predicate,
-                    predicate_raw=e.predicate_raw,
-                    target_id=e.target_id,
-                    confidence=e.confidence,
-                    evidence=e.evidence,
-                    utterance_ids=e.utterance_ids,
-                )
-                for e in response.used_edges
-            ],
-            debug=response.debug,
+            assistant_message=ThreadMessage(**response["assistant_message"]),
+            sources=[ChatSource(**s) for s in response.get("sources", [])],
+            focus_node_ids=list(response.get("focus_node_ids", [])),
+            debug=response.get("debug"),
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
