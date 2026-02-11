@@ -33,5 +33,10 @@ my_transcription*.json
 artifacts/
 data/
 
+# Local lists
+.transcription_watchlist.json
+video_ids.txt
+videos_for_kg.txt
+
 # OS
 .DS_Store
