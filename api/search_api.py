@@ -910,7 +910,7 @@ async def send_message(thread_id: str, request: ChatMessageRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/")
+@app.get("/api")
 async def root():
     """Root endpoint."""
     return {
