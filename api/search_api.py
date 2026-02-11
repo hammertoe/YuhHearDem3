@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
@@ -62,7 +63,16 @@ def _get_chat_agent() -> KGChatAgentV2:
 def _startup() -> None:
     global postgres, memgraph, embedding_client, advanced_search, chat_agent
     postgres = PostgresClient()
-    memgraph = MemgraphClient()
+    try:
+        # Try to ensure chat schema, but don't fail if it already exists with different structure
+        ensure_chat_schema(postgres)
+    except Exception:
+        pass  # Schema may already exist with different structure
+    try:
+        memgraph = MemgraphClient()
+    except Exception as e:
+        print(f"Warning: Could not connect to Memgraph: {e}")
+        memgraph = None
     embedding_client = GoogleEmbeddingClient()
     advanced_search = AdvancedSearchFeatures(
         postgres=postgres,
@@ -72,6 +82,7 @@ def _startup() -> None:
     chat_agent = KGChatAgentV2(
         postgres_client=postgres,
         embedding_client=embedding_client,
+        model=getattr(config, "gemini_model", "gemini-2.5-flash"),
         enable_thinking=getattr(config, "enable_thinking", False),
     )
 
@@ -275,44 +286,11 @@ def _get_advanced_search() -> AdvancedSearchFeatures:
     return advanced_search
 
 
-def _get_chat_agent() -> KGChatAgentV2:
-    assert chat_agent is not None
-    return chat_agent
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    global postgres, memgraph, embedding_client, advanced_search, chat_agent
-    postgres = PostgresClient()
-    memgraph = MemgraphClient()
-    embedding_client = GoogleEmbeddingClient()
-    advanced_search = AdvancedSearchFeatures(
-        postgres=postgres,
-        memgraph=memgraph,
-        embedding_client=embedding_client,
-    )
-    chat_agent = KGChatAgentV2(
-        postgres_client=postgres,
-        embedding_client=embedding_client,
-    )
-
-
-@app.on_event("shutdown")
-def _shutdown() -> None:
-    global postgres, memgraph
-    if postgres is not None:
-        postgres.close()
-    if memgraph is not None:
-        memgraph.close()
-
-
 def _vector_literal(vec: list[float]) -> str:
     return "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
 
 
-def vector_search_entities(
-    query_embedding: list[float], limit: int
-) -> list[dict[str, Any]]:
+def vector_search_entities(query_embedding: list[float], limit: int) -> list[dict[str, Any]]:
     """Search entities by vector similarity."""
     results = _get_postgres().execute_query(
         """
@@ -325,15 +303,10 @@ def vector_search_entities(
         (_vector_literal(query_embedding), _vector_literal(query_embedding), limit),
     )
 
-    return [
-        {"id": row[0], "text": row[1], "type": row[2], "distance": row[3]}
-        for row in results
-    ]
+    return [{"id": row[0], "text": row[1], "type": row[2], "distance": row[3]} for row in results]
 
 
-def vector_search_paragraphs(
-    query_embedding: list[float], limit: int
-) -> list[dict[str, Any]]:
+def vector_search_paragraphs(query_embedding: list[float], limit: int) -> list[dict[str, Any]]:
     """Search paragraphs by vector similarity."""
     results = _get_postgres().execute_query(
         """
@@ -516,15 +489,10 @@ async def search(request: SearchRequest):
     """Hybrid search combining entity + paragraph vector search."""
     try:
         try:
-            query_embedding = _get_embedding_client().generate_query_embedding(
-                request.query
-            )
+            query_embedding = _get_embedding_client().generate_query_embedding(request.query)
         except Exception as e:
             print(f"⚠️ Embeddings unavailable; falling back to BM25 only: {e}")
-            return [
-                SearchResult(**r)
-                for r in bm25_search_sentences(request.query, request.limit)
-            ]
+            return [SearchResult(**r) for r in bm25_search_sentences(request.query, request.limit)]
 
         phase1_entities = vector_search_entities(query_embedding, 10)
         phase1_paragraphs = vector_search_paragraphs(query_embedding, 10)
@@ -536,13 +504,9 @@ async def search(request: SearchRequest):
         # phase2_expanded = graph_expand_entities(entity_ids)  # noqa: F841
 
         phase3_sentences_from_entities = retrieve_sentences_for_entities(entity_ids)
-        phase3_sentences_from_paragraphs = retrieve_sentences_for_paragraphs(
-            paragraph_ids
-        )
+        phase3_sentences_from_paragraphs = retrieve_sentences_for_paragraphs(paragraph_ids)
 
-        all_sentences = (
-            phase3_sentences_from_entities + phase3_sentences_from_paragraphs
-        )
+        all_sentences = phase3_sentences_from_entities + phase3_sentences_from_paragraphs
 
         sentence_map = {s["id"]: s for s in all_sentences}
         unique_results = list(sentence_map.values())
@@ -550,9 +514,7 @@ async def search(request: SearchRequest):
         scored: list[dict[str, Any]] = []
         for result in unique_results:
             distances = [
-                e["distance"]
-                for e in phase1_entities
-                if e["id"] == result.get("entity_id")
+                e["distance"] for e in phase1_entities if e["id"] == result.get("entity_id")
             ]
             vector_score = 1.0 - min(distances) if distances else 0.5
             result["score"] = float(vector_score)
@@ -956,6 +918,10 @@ async def root():
         "version": "1.0.0",
         "endpoints": {"search": "/search"},
     }
+
+
+# Serve frontend static files
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
 
 
 if __name__ == "__main__":
