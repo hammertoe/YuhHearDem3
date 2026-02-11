@@ -228,6 +228,28 @@ CREATE TABLE IF NOT EXISTS speaker_video_roles (
 );
 
 -- ============================================================================
+-- VIDEO ↔ ORDER PAPER MATCH DECISIONS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS video_order_paper_matches (
+    youtube_video_id TEXT PRIMARY KEY,
+    order_paper_id TEXT,
+    score FLOAT NOT NULL DEFAULT 0,
+    confidence TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+    candidate_scores JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT fk_vopm_order_paper
+        FOREIGN KEY (order_paper_id) REFERENCES order_papers(id) ON DELETE SET NULL,
+    CONSTRAINT chk_vopm_confidence
+        CHECK (confidence IN ('high', 'medium', 'low')),
+    CONSTRAINT chk_vopm_status
+        CHECK (status IN ('auto_matched', 'needs_review', 'manual_override'))
+);
+
+-- ============================================================================
 -- CANONICAL KNOWLEDGE GRAPH (LLM-FIRST)
 -- ============================================================================
 
@@ -384,6 +406,8 @@ CREATE INDEX IF NOT EXISTS idx_order_paper_items_type ON order_paper_items(item_
 CREATE INDEX IF NOT EXISTS idx_speaker_video_roles_video ON speaker_video_roles(youtube_video_id);
 CREATE INDEX IF NOT EXISTS idx_speaker_video_roles_speaker_id ON speaker_video_roles(speaker_id);
 CREATE INDEX IF NOT EXISTS idx_speaker_video_roles_speaker_name ON speaker_video_roles(speaker_name_norm);
+CREATE INDEX IF NOT EXISTS idx_vopm_order_paper_id ON video_order_paper_matches(order_paper_id);
+CREATE INDEX IF NOT EXISTS idx_vopm_status ON video_order_paper_matches(status);
 
 -- ============================================================================
 -- INDEXES: Canonical KG
