@@ -159,3 +159,57 @@ def test_agent_loop_preserves_model_tool_call_content_when_continuing() -> None:
     # Second model call should include the model-provided tool-call content.
     second_contents = client.aio.models.calls[1]["contents"]
     assert model_tool_call_content in second_contents
+
+
+def test_agent_loop_strips_wuhloss_leading_interjection() -> None:
+    """Avoid starting answers with filler like 'Wuhloss,'"""
+
+    from lib.kg_agent_loop import KGAgentLoop
+
+    responses = [
+        _FakeResponse(
+            text=json.dumps(
+                {
+                    "answer": "Wuhloss, here's what I found.",
+                    "cite_utterance_ids": [],
+                    "focus_node_ids": [],
+                }
+            ),
+            function_calls=None,
+        )
+    ]
+    client = _FakeGeminiClient(responses)
+    loop = KGAgentLoop(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        client=client,
+    )
+
+    result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
+    assert result["answer"].startswith("Wuhloss") is False
+
+
+def test_agent_loop_strips_key_connections_section() -> None:
+    from lib.kg_agent_loop import KGAgentLoop
+
+    responses = [
+        _FakeResponse(
+            text=json.dumps(
+                {
+                    "answer": "Intro\n\nKey connections\n- a -> b\n- c -> d\n\nOutro",
+                    "cite_utterance_ids": [],
+                    "focus_node_ids": [],
+                }
+            ),
+            function_calls=None,
+        )
+    ]
+    client = _FakeGeminiClient(responses)
+    loop = KGAgentLoop(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        client=client,
+    )
+
+    result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
+    assert "Key connections" not in result["answer"]

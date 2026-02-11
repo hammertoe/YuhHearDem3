@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 
 class _FakePostgres:
     def __init__(self) -> None:
@@ -69,7 +67,7 @@ class _FakePostgres:
 
         if "FROM sentences" in sql:
             # (id, text, seconds_since_start, timestamp_str, youtube_video_id,
-            #  video_date, video_title, speaker_id, full_name, normalized_name)
+            #  video_date, video_title, speaker_id, full_name, normalized_name, title, position)
             return [
                 (
                     "utt_1",
@@ -79,11 +77,17 @@ class _FakePostgres:
                     "Syxyah7QIaM",
                     "2025-01-01",
                     "Parliament Sitting",
-                    "s_test_1",
-                    "A. Minister",
-                    "a minister",
+                    "s_santia_bradshaw_1",
+                    None,
+                    "santia bradshaw",
+                    None,
+                    None,
                 )
             ]
+
+        if "FROM order_papers" in sql and "jsonb_array_elements" in sql:
+            # (sitting_date, name, title, role)
+            return [("2026-01-06", "Santia Bradshaw", "Hon.", "Minister")]
 
         return []
 
@@ -128,9 +132,29 @@ def test_kg_hybrid_graph_rag_returns_compact_subgraph():
 
     assert len(out["edges"]) == 1
     assert out["edges"][0]["id"] == "kge_1"
+    assert out["edges"][0]["source_label"] == "Water Management"
+    assert out["edges"][0]["target_label"] == "National Water Authority"
 
     assert len(out["citations"]) == 1
     c = out["citations"][0]
     assert c["utterance_id"] == "utt_1"
     assert c["youtube_video_id"] == "Syxyah7QIaM"
     assert c["youtube_url"].endswith("&t=1235s")
+    assert c["speaker_name"] == "The Honourable Santia Bradshaw"
+
+
+def test_format_speaker_name_prefers_full_name_and_title_cases_normalized() -> None:
+    from lib.kg_hybrid_graph_rag import format_speaker_name
+
+    assert (
+        format_speaker_name(
+            full_name=None, normalized_name="hon santia bradshaw", speaker_id=""
+        )
+        == "The Honourable Santia Bradshaw"
+    )
+    assert (
+        format_speaker_name(
+            full_name="Ralph Thorne", normalized_name="mr ralph thorne", speaker_id=""
+        )
+        == "Ralph Thorne"
+    )

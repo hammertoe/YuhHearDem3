@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,6 +39,76 @@ def _parse_json_best_effort(text: str | None) -> dict[str, Any] | None:
         return None
 
 
+_LEADING_INTERJECTION_RE = re.compile(r"^(wuh\s*-?\s*loss)[\s,!.:-]+", re.IGNORECASE)
+_KEY_CONNECTIONS_BLOCK_RE = re.compile(
+    r"(?ims)^\s*#{0,6}\s*key connections\s*$\n(?:^\s*[-*]\s.*\n)+\n?",
+)
+
+
+def _promote_section_headings(text: str) -> str:
+    lines = text.splitlines()
+    out: list[str] = []
+
+    def is_blank(s: str) -> bool:
+        return not s.strip()
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        prev_blank = i == 0 or is_blank(lines[i - 1])
+        next_nonblank = i + 1 < len(lines) and not is_blank(lines[i + 1])
+
+        if (
+            prev_blank
+            and next_nonblank
+            and stripped
+            and not stripped.startswith("#")
+            and not stripped.startswith(">")
+            and not stripped.startswith("-")
+            and not stripped.endswith(":")
+            and len(stripped) <= 64
+            and re.fullmatch(r"[A-Z][A-Za-z0-9 \"'\-()]+", stripped) is not None
+        ):
+            # Heuristic: if it's mostly Title Case words, treat as a section heading.
+            words = [w for w in re.split(r"\s+", stripped) if w]
+            small = {
+                "and",
+                "or",
+                "the",
+                "a",
+                "an",
+                "of",
+                "to",
+                "for",
+                "in",
+                "on",
+                "with",
+            }
+            titleish = 0
+            for w in words:
+                lw = w.lower().strip("\"'()")
+                if lw in small:
+                    titleish += 1
+                elif w[:1].isupper():
+                    titleish += 1
+            if len(words) >= 2 and (titleish / max(1, len(words))) >= 0.75:
+                out.append(f"### {stripped}")
+                continue
+
+        out.append(line)
+
+    return "\n".join(out)
+
+
+def _clean_answer_text(text: str | None) -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    raw = _LEADING_INTERJECTION_RE.sub("", raw).lstrip()
+    raw = _KEY_CONNECTIONS_BLOCK_RE.sub("", raw).strip()
+    raw = _promote_section_headings(raw)
+    return raw
+
+
 @dataclass
 class _ToolCall:
     name: str
@@ -71,13 +142,20 @@ class KGAgentLoop:
 
     def _system_prompt(self) -> str:
         return (
-            "You are YuhHearDem, an AI guide to Barbados Parliament debates. "
-            "You must ground your answers in retrieved evidence from the knowledge graph and transcript utterances.\n\n"
+            "You are YuhHearDem, a friendly AI guide to Barbados Parliament debates. "
+            "Keep a lightly Caribbean (Bajan) tone - warm and plainspoken, not cheesy.\n\n"
+            "You MUST ground everything in retrieved evidence from the knowledge graph and transcript utterances.\n\n"
             "Rules:\n"
             "- Before answering, call the tool `kg_hybrid_graph_rag` to retrieve a compact subgraph + citations.\n"
             "- Use ONLY the tool results as your source of truth. Do not invent facts.\n"
+            "- Interpret the tool results: use `edges` + `nodes` to explain relationships (who/what connects to what, agreements/disagreements, proposals, responsibilities) in plain language.\n"
+            "- Prefer quoting MPs directly when citations are available; use markdown blockquotes and put the quoted sentence in *italics*.\n"
+            "- Use short section headings for the main themes using markdown like `### The Climate Change Clash`.\n"
+            "- Do NOT include a section called 'Key connections' and do NOT show technical arrow notation like `A -> PREDICATE -> B`.\n"
+            "- Do NOT start your answer with filler like 'Wuhloss,'; start directly with the point.\n"
+            "- Your `answer` field may contain markdown (bullets, bold, blockquotes).\n"
             "- When you make a claim, include at least one citation by listing its `utterance_id` in `cite_utterance_ids`.\n"
-            "- If evidence is insufficient, say so clearly and ask a precise follow-up.\n"
+            "- If evidence is insufficient, say so clearly and ask one precise follow-up.\n"
             "- Return JSON only matching the response schema."
         )
 
@@ -238,6 +316,8 @@ class KGAgentLoop:
         parsed.setdefault("cite_utterance_ids", [])
         parsed.setdefault("focus_node_ids", [])
         parsed.setdefault("answer", "")
+
+        parsed["answer"] = _clean_answer_text(parsed.get("answer"))
 
         parsed["retrieval"] = last_retrieval
         return parsed

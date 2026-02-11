@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { createThread, getThread, sendMessage, type ChatSource, type ThreadMessage } from './api';
 
 type UIMessage = {
@@ -16,11 +18,70 @@ const EXAMPLE_PROMPTS = [
   'What bills were mentioned about education, and where?',
 ];
 
-function formatSourceLabel(s: ChatSource): string {
-  const who = s.speaker_name || s.speaker_id || 'Unknown speaker';
-  const when = s.timestamp_str ? ` @ ${s.timestamp_str}` : '';
-  const title = s.video_title ? ` - ${s.video_title}` : '';
-  return `${who}${when}${title}`;
+function formatSpeakerName(s: ChatSource): string {
+  const raw = (s.speaker_name || '').trim();
+  if (raw && !raw.startsWith('s_')) {
+    const looksLower = raw === raw.toLowerCase();
+    if (!looksLower) return raw;
+
+    const words = raw.split(/\s+/g).filter(Boolean);
+    const fixed = words
+      .map((w) => {
+        const lw = w.toLowerCase();
+        if (lw === 'hon' || lw === 'hon.' || lw === 'honourable') return 'The Honourable';
+        if (lw === 'mr' || lw === 'mr.') return 'Mr.';
+        if (lw === 'ms' || lw === 'ms.') return 'Ms.';
+        if (lw === 'mrs' || lw === 'mrs.') return 'Mrs.';
+        if (lw === 'dr' || lw === 'dr.') return 'Dr.';
+        return w.slice(0, 1).toUpperCase() + w.slice(1);
+      })
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return fixed;
+  }
+
+  const sid = (s.speaker_id || raw || '').trim();
+  if (!sid) return 'Unknown speaker';
+  return sid
+    .replace(/^s_/, '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function YouTubeIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M23.5 6.2a3.1 3.1 0 0 0-2.2-2.2C19.3 3.5 12 3.5 12 3.5s-7.3 0-9.3.5A3.1 3.1 0 0 0 .5 6.2 32.4 32.4 0 0 0 0 12s0 3.1.5 5.8a3.1 3.1 0 0 0 2.2 2.2c2 .5 9.3.5 9.3.5s7.3 0 9.3-.5a3.1 3.1 0 0 0 2.2-2.2A32.4 32.4 0 0 0 24 12s0-3.1-.5-5.8ZM9.6 15.5v-7L15.9 12l-6.3 3.5Z"
+      />
+    </svg>
+  );
+}
+
+function MarkdownMessage({ content }: { content: string }) {
+  return (
+    <div className="md">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ children, ...props }) => (
+            <a {...props} target="_blank" rel="noreferrer" />
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 function App() {
@@ -223,7 +284,7 @@ function App() {
                     className={m.role === 'user' ? 'msg-row msg-user' : 'msg-row msg-assistant'}
                   >
                     <div className={m.role === 'user' ? 'msg-bubble bubble-user' : 'msg-bubble bubble-assistant'}>
-                      <div className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</div>
+                      <MarkdownMessage content={m.content} />
 
                       {m.role === 'assistant' && m.sources && m.sources.length > 0 && (
                         <div className="mt-4 border-t border-ink/10 pt-3">
@@ -239,16 +300,34 @@ function App() {
                                 rel="noreferrer"
                                 className="source-card"
                               >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="text-xs font-medium text-ink">
-                                    {formatSourceLabel(s)}
+                                <div className="flex items-start gap-3">
+                                  <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm">
+                                    <YouTubeIcon className="h-4 w-4" />
                                   </div>
-                                  <div className="text-[11px] text-ink/60 font-mono">
-                                    {s.youtube_video_id}
+
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <div className="text-xs font-semibold text-ink">
+                                        {formatSpeakerName(s)}
+                                      </div>
+                                      {s.timestamp_str && (
+                                        <span className="source-pill">@ {s.timestamp_str}</span>
+                                      )}
+                                      {s.video_date && (
+                                        <span className="source-pill">{s.video_date}</span>
+                                      )}
+                                    </div>
+
+                                    {s.video_title && (
+                                      <div className="mt-1 text-xs text-ink/70 source-title">
+                                        {s.video_title}
+                                      </div>
+                                    )}
+
+                                    <div className="mt-2 text-xs text-ink/80 source-snippet">
+                                      <em>{s.text}</em>
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="mt-1 text-xs text-ink/70 source-snippet">
-                                  {s.text}
                                 </div>
                               </a>
                             ))}
