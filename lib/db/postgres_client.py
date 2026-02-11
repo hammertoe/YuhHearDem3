@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Iterable
 
 from psycopg_pool import ConnectionPool
 
@@ -17,19 +17,17 @@ class PostgresClient:
         self.pool: ConnectionPool
         self._initialize_pool()
 
-    def _initialize_pool(self):
+    def _initialize_pool(self) -> None:
         """Initialize connection pool."""
         conninfo = (
             f"host={config.database.postgres_host} "
             f"port={config.database.postgres_port} "
             f"dbname={config.database.postgres_database} "
             f"user={config.database.postgres_user} "
-            f"password={config.database.postgres_password}"
+            f"password={config.database.postgres_password} "
+            f"connect_timeout=30"
         )
-        self.pool = ConnectionPool(
-            conninfo=conninfo, min_size=2, max_size=10, open=False
-        )
-        # psycopg_pool does not automatically open when open=False.
+        self.pool = ConnectionPool(conninfo=conninfo, min_size=1, max_size=5, open=False)
         self.pool.open()
 
     @contextmanager
@@ -56,29 +54,26 @@ class PostgresClient:
                 cursor.close()
 
     def execute_query(
-        self, query: str, params: tuple[Any, ...] | None = None
+        self, query: str, params: Iterable[Any] | None = None
     ) -> list[tuple[Any, ...]]:
         """Execute a query and return results."""
         with self.get_cursor() as cursor:
-            cursor.execute(query, params or ())
+            cursor.execute(query, params)
             return cursor.fetchall()
 
-    def execute_update(self, query: str, params: tuple[Any, ...] | None = None) -> int:
+    def execute_update(self, query: str, params: Iterable[Any] | None = None) -> int:
         """Execute an update/insert query and return affected rows."""
         with self.get_cursor() as cursor:
-            cursor.execute(query, params or ())
+            cursor.execute(query, params)
             return cursor.rowcount
 
-    def execute_batch(
-        self, query: str, params_list: list[tuple], page_size: int = 100
-    ) -> None:
+    def execute_batch(self, query: str, params_list: list[tuple], page_size: int = 100) -> None:
         """Execute batch insert/update."""
         with self.get_cursor() as cursor:
             cursor.executemany(query, params_list)
 
     def close(self):
         """Close connection pool."""
-        # psycopg_pool ConnectionPool exposes .close(); older psycopg2 pools used .closeall().
         if getattr(self, "pool", None) is not None:
             self.pool.close()
 
