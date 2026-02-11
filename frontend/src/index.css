@@ -471,6 +471,10 @@ body {
   /* Cropped image keeps the building higher on wide screens */
   height: clamp(260px, 34vw, 360px);
   background-image: url('/parliament-bg-cropped.jpg');
+  background-image: image-set(
+    url('/parliament-bg-cropped.webp') type('image/webp'),
+    url('/parliament-bg-cropped.jpg') type('image/jpeg')
+  );
   background-size: cover;
   background-position: center 18%;
   background-repeat: no-repeat;
