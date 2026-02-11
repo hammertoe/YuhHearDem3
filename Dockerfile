@@ -1,3 +1,20 @@
+FROM python:3.13-slim AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN cd frontend && npm ci && npm run build && cp public/parliament-bg.jpg dist/
+
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -9,10 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY --from=builder /app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY --from=builder /app /app
 
 EXPOSE 8000
 
