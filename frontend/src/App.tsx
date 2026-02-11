@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createThread, getThread, sendMessage, type ChatSource, type ThreadMessage } from './api';
@@ -282,7 +282,6 @@ function App() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState<boolean | null>(null);
-  const listEndRef = useRef<HTMLDivElement>(null);
 
   const sortedMessages = useMemo(() => messages, [messages]);
 
@@ -318,10 +317,6 @@ function App() {
     };
     load();
   }, []);
-
-  useEffect(() => {
-    listEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [sortedMessages.length, sending]);
 
   const onClear = async () => {
     localStorage.removeItem('yhd_thread_id');
@@ -392,8 +387,9 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen app-bg">
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+    <div className="min-h-screen app-bg relative">
+      <div className="parliament-bg pointer-events-none absolute inset-x-0 top-0 z-0 h-[400px]" />
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 relative z-10">
         {/* Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -565,7 +561,7 @@ function App() {
                 </div>
               )}
 
-              <div ref={listEndRef} />
+              <div />
             </div>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end">

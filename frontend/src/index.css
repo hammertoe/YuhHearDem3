@@ -466,6 +466,31 @@ body {
   }
 }
 
+/* Parliament Background */
+.parliament-bg {
+  /* User-supplied image from Wikimedia Commons (locally hosted) */
+  background-image: url('/parliament-bg.jpg');
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+  
+  /* “subtle in header” look */
+  opacity: 0.22;
+  filter: blur(0.2px) saturate(0.9) contrast(0.95);
+  transform: scale(1.02); /* avoids edge seams */
+  
+  /* Standard mask for most browsers */
+  mask-image: linear-gradient(to bottom, black 0%, black 45%, transparent 100%);
+  /* Webkit prefix for Brave/Chrome/Safari */
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 45%, transparent 100%);
+  
+  /* Helpful blend mode */
+  mix-blend-mode: multiply;
+  
+  /* Fallback for browsers with strict privacy settings that might block masks */
+  background-color: transparent;
+}
+
 /* Header Styles */
 .header-title {
   font-family: var(--font-display);
