@@ -140,9 +140,14 @@ body {
   display: block;
   border: 1px solid rgba(20, 19, 21, 0.10);
   background: rgba(255, 255, 255, 0.72);
-  border-radius: 14px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 8px 10px;
   transition: transform 150ms ease, background 150ms ease;
+}
+
+.source-flash {
+  outline: 2px solid rgba(17, 24, 39, 0.25);
+  outline-offset: 3px;
 }
 
 .source-card:hover {
@@ -152,7 +157,7 @@ body {
 
 .source-snippet {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

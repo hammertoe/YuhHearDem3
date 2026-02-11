@@ -6,6 +6,7 @@ from typing import Any
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import generate_entity_id
+from lib.roles import infer_role_kind, normalize_person_name, normalize_role_label
 from lib.processors.paragraph_splitter import (
     group_transcripts_into_paragraphs,
     split_paragraph_into_sentences,
@@ -60,6 +61,9 @@ class TranscriptIngestor:
         speakers = transcript_data.get("speakers", []) or []
         for s in speakers:
             self._upsert_speaker(s)
+            self._upsert_speaker_video_roles_for_video(
+                s, youtube_video_id=youtube_video_id
+            )
 
         transcripts = transcript_data.get("transcripts", []) or []
         paragraphs = group_transcripts_into_paragraphs(youtube_video_id, transcripts)
@@ -203,6 +207,119 @@ class TranscriptIngestor:
                 "",
                 speaker.get("position", "") or "Unknown",
                 speaker.get("party", ""),
+            ),
+        )
+
+    def _upsert_speaker_video_roles_for_video(
+        self, speaker: dict[str, Any], *, youtube_video_id: str
+    ) -> None:
+        speaker_id = speaker.get("speaker_id") or None
+        speaker_name = (speaker.get("name") or speaker_id or "").strip()
+        speaker_name_norm = normalize_person_name(speaker_name)
+
+        position = (speaker.get("position") or "").strip()
+        if position and position.lower() != "unknown":
+            self._upsert_speaker_video_role(
+                youtube_video_id=youtube_video_id,
+                speaker_id=speaker_id,
+                speaker_name=speaker_name,
+                role_label=position,
+                role_kind=infer_role_kind(position),
+                source="transcript",
+                source_id="",
+                confidence=None,
+                evidence=None,
+            )
+
+        role_in_video = (speaker.get("role_in_video") or "").strip()
+        if role_in_video and role_in_video.lower() not in {"unknown", "member"}:
+            role_norm = normalize_role_label(role_in_video)
+            if role_norm != normalize_role_label(position):
+                self._upsert_speaker_video_role(
+                    youtube_video_id=youtube_video_id,
+                    speaker_id=speaker_id,
+                    speaker_name=speaker_name,
+                    role_label=role_in_video,
+                    role_kind=infer_role_kind(role_in_video),
+                    source="transcript",
+                    source_id="",
+                    confidence=None,
+                    evidence=None,
+                )
+
+        if speaker_id and speaker_name_norm:
+            self.postgres.execute_update(
+                """
+                UPDATE speaker_video_roles
+                SET speaker_id = %s, updated_at = NOW()
+                WHERE youtube_video_id = %s
+                  AND speaker_name_norm = %s
+                  AND speaker_id IS NULL
+                """,
+                (speaker_id, youtube_video_id, speaker_name_norm),
+            )
+
+    def _upsert_speaker_video_role(
+        self,
+        *,
+        youtube_video_id: str,
+        speaker_id: str | None,
+        speaker_name: str,
+        role_label: str,
+        role_kind: str,
+        source: str,
+        source_id: str,
+        confidence: float | None,
+        evidence: str | None,
+    ) -> None:
+        speaker_name_norm = normalize_person_name(speaker_name)
+        role_label_norm = normalize_role_label(role_label)
+        if not speaker_name_norm or not role_label_norm:
+            return
+
+        self.postgres.execute_update(
+            """
+            INSERT INTO speaker_video_roles (
+                youtube_video_id,
+                speaker_id,
+                speaker_name_raw,
+                speaker_name_norm,
+                role_label,
+                role_label_norm,
+                role_kind,
+                source,
+                source_id,
+                confidence,
+                evidence,
+                updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (
+                youtube_video_id,
+                speaker_name_norm,
+                role_kind,
+                role_label_norm,
+                source,
+                source_id
+            )
+            DO UPDATE SET
+                speaker_id = COALESCE(EXCLUDED.speaker_id, speaker_video_roles.speaker_id),
+                speaker_name_raw = EXCLUDED.speaker_name_raw,
+                role_label = EXCLUDED.role_label,
+                updated_at = NOW()
+            """,
+            (
+                youtube_video_id,
+                speaker_id,
+                speaker_name,
+                speaker_name_norm,
+                role_label,
+                role_label_norm,
+                role_kind,
+                source,
+                source_id or "",
+                confidence,
+                evidence,
             ),
         )
 

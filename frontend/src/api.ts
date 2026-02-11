@@ -23,6 +23,7 @@ export type ChatSource = {
   timestamp_str: string;
   speaker_id: string;
   speaker_name: string;
+  speaker_title?: string | null;
   text: string;
   video_title: string | null;
   video_date: string | null;

@@ -109,6 +109,40 @@ def _clean_answer_text(text: str | None) -> str:
     return raw
 
 
+def _filter_to_known_citation_ids(
+    cite_utterance_ids: list[str],
+    retrieval: dict[str, Any] | None,
+) -> list[str]:
+    if not cite_utterance_ids:
+        return []
+    if not isinstance(retrieval, dict):
+        return [
+            str(x or "").strip() for x in cite_utterance_ids if str(x or "").strip()
+        ]
+
+    known = {
+        str(c.get("utterance_id") or "").strip()
+        for c in (retrieval.get("citations") or [])
+        if isinstance(c, dict)
+    }
+    known.discard("")
+    if not known:
+        return [
+            str(x or "").strip() for x in cite_utterance_ids if str(x or "").strip()
+        ]
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in cite_utterance_ids:
+        uid = str(raw or "").strip()
+        if not uid or uid in seen:
+            continue
+        if uid in known:
+            seen.add(uid)
+            out.append(uid)
+    return out
+
+
 @dataclass
 class _ToolCall:
     name: str
@@ -150,6 +184,8 @@ class KGAgentLoop:
             "- Use ONLY the tool results as your source of truth. Do not invent facts.\n"
             "- Interpret the tool results: use `edges` + `nodes` to explain relationships (who/what connects to what, agreements/disagreements, proposals, responsibilities) in plain language.\n"
             "- Prefer quoting MPs directly when citations are available; use markdown blockquotes and put the quoted sentence in *italics*.\n"
+            "- Add visible inline citations in the answer body using markdown links like `[1](#src:utt_123)` or `[cite](#src:utt_123)` immediately after the sentence/quote they support.\n"
+            "- Use only utterance_ids that appear in the tool citations.\n"
             "- Use short section headings for the main themes using markdown like `### The Climate Change Clash`.\n"
             "- Do NOT include a section called 'Key connections' and do NOT show technical arrow notation like `A -> PREDICATE -> B`.\n"
             "- Do NOT start your answer with filler like 'Wuhloss,'; start directly with the point.\n"
@@ -317,7 +353,11 @@ class KGAgentLoop:
         parsed.setdefault("focus_node_ids", [])
         parsed.setdefault("answer", "")
 
-        parsed["answer"] = _clean_answer_text(parsed.get("answer"))
+        parsed["cite_utterance_ids"] = _filter_to_known_citation_ids(
+            list(parsed.get("cite_utterance_ids") or []),
+            last_retrieval,
+        )
 
+        parsed["answer"] = _clean_answer_text(parsed.get("answer"))
         parsed["retrieval"] = last_retrieval
         return parsed

@@ -67,7 +67,7 @@ class _FakePostgres:
 
         if "FROM sentences" in sql:
             # (id, text, seconds_since_start, timestamp_str, youtube_video_id,
-            #  video_date, video_title, speaker_id, full_name, normalized_name, title, position)
+            #  video_date, video_title, speaker_id, full_name, normalized_name, title, position, speaker_title)
             return [
                 (
                     "utt_1",
@@ -82,6 +82,7 @@ class _FakePostgres:
                     "santia bradshaw",
                     None,
                     None,
+                    "Minister",
                 )
             ]
 
@@ -141,6 +142,47 @@ def test_kg_hybrid_graph_rag_returns_compact_subgraph():
     assert c["youtube_video_id"] == "Syxyah7QIaM"
     assert c["youtube_url"].endswith("&t=1235s")
     assert c["speaker_name"] == "The Honourable Santia Bradshaw"
+    assert c["speaker_title"] == "Minister"
+
+
+def test_kg_hybrid_graph_rag_falls_back_to_speakers_position_when_no_session_role() -> (
+    None
+):
+    from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
+
+    class _FakePostgresNoRole(_FakePostgres):
+        def execute_query(self, sql: str, params: tuple[Any, ...] | None = None):
+            if "FROM sentences" in sql:
+                return [
+                    (
+                        "utt_1",
+                        "We need to address water management.",
+                        1235,
+                        "00:20:35",
+                        "Syxyah7QIaM",
+                        "2025-01-01",
+                        "Parliament Sitting",
+                        "s_santia_bradshaw_1",
+                        None,
+                        "santia bradshaw",
+                        None,
+                        "Minister of Transport",
+                        None,
+                    )
+                ]
+            return super().execute_query(sql, params)
+
+    out = kg_hybrid_graph_rag(
+        postgres=_FakePostgresNoRole(),
+        embedding_client=_FakeEmbedding(),
+        query="water management",
+        hops=1,
+        seed_k=5,
+        max_edges=20,
+        max_citations=5,
+    )
+
+    assert out["citations"][0]["speaker_title"] == "Minister of Transport"
 
 
 def test_format_speaker_name_prefers_full_name_and_title_cases_normalized() -> None:

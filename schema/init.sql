@@ -200,6 +200,34 @@ CREATE TABLE IF NOT EXISTS order_paper_items (
 );
 
 -- ============================================================================
+-- SESSION-SCOPED SPEAKER ROLES (multiple roles per video)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS speaker_video_roles (
+    youtube_video_id TEXT NOT NULL,
+    speaker_id TEXT,
+    speaker_name_raw TEXT NOT NULL,
+    speaker_name_norm TEXT NOT NULL,
+    role_label TEXT NOT NULL,
+    role_label_norm TEXT NOT NULL,
+    role_kind TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_id TEXT NOT NULL DEFAULT '',
+    confidence FLOAT,
+    evidence TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uq_speaker_video_role UNIQUE (
+        youtube_video_id,
+        speaker_name_norm,
+        role_kind,
+        role_label_norm,
+        source,
+        source_id
+    )
+);
+
+-- ============================================================================
 -- CANONICAL KNOWLEDGE GRAPH (LLM-FIRST)
 -- ============================================================================
 
@@ -348,6 +376,14 @@ CREATE INDEX IF NOT EXISTS idx_order_papers_date ON order_papers(sitting_date);
 CREATE INDEX IF NOT EXISTS idx_order_papers_number ON order_papers(order_paper_number);
 CREATE INDEX IF NOT EXISTS idx_order_paper_items_order_paper ON order_paper_items(order_paper_id);
 CREATE INDEX IF NOT EXISTS idx_order_paper_items_type ON order_paper_items(item_type);
+
+-- ============================================================================
+-- INDEXES: Session-Scoped Speaker Roles
+-- ============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_speaker_video_roles_video ON speaker_video_roles(youtube_video_id);
+CREATE INDEX IF NOT EXISTS idx_speaker_video_roles_speaker_id ON speaker_video_roles(speaker_id);
+CREATE INDEX IF NOT EXISTS idx_speaker_video_roles_speaker_name ON speaker_video_roles(speaker_name_norm);
 
 -- ============================================================================
 -- INDEXES: Canonical KG

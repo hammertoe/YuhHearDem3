@@ -371,7 +371,30 @@ def _hydrate_citations(
         f"""
         SELECT s.id, s.text, s.seconds_since_start, s.timestamp_str,
                s.youtube_video_id, s.video_date, s.video_title, s.speaker_id,
-               sp.full_name, sp.normalized_name, sp.title, sp.position
+               sp.full_name, sp.normalized_name, sp.title, sp.position,
+               (
+                   SELECT svr.role_label
+                   FROM speaker_video_roles svr
+                   WHERE svr.youtube_video_id = s.youtube_video_id
+                     AND svr.speaker_id = s.speaker_id
+                   ORDER BY
+                     CASE svr.source
+                       WHEN 'order_paper_pdf' THEN 0
+                       WHEN 'order_paper' THEN 1
+                       WHEN 'transcript' THEN 2
+                       ELSE 3
+                     END,
+                     CASE svr.role_kind
+                       WHEN 'executive' THEN 0
+                       WHEN 'procedural' THEN 1
+                       WHEN 'parliamentary' THEN 2
+                       WHEN 'constituency' THEN 3
+                       WHEN 'committee' THEN 4
+                       ELSE 5
+                     END,
+                     length(svr.role_label) ASC
+                   LIMIT 1
+               ) AS speaker_title
         FROM sentences s
         LEFT JOIN speakers sp ON s.speaker_id = sp.id
         WHERE s.id IN ({placeholders})
@@ -388,6 +411,8 @@ def _hydrate_citations(
         full_name = r[8]
         normalized_name = r[9]
         speaker_title = r[10]
+        speaker_position = r[11]
+        session_speaker_title = r[12]
 
         # Build key candidates for order-paper lookup.
         candidates: list[str] = []
@@ -450,6 +475,16 @@ def _hydrate_citations(
                 "video_title": r[6] or None,
                 "speaker_id": speaker_id,
                 "speaker_name": speaker_name,
+                "speaker_title": (
+                    str(session_speaker_title)
+                    if session_speaker_title
+                    else (
+                        str(speaker_position)
+                        if speaker_position
+                        and str(speaker_position).strip().lower() != "unknown"
+                        else None
+                    )
+                ),
             }
         )
     out.sort(key=lambda x: int(x.get("seconds_since_start", 0)))

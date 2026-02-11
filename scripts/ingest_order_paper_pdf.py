@@ -25,9 +25,17 @@ from lib.db.postgres_client import PostgresClient
 from lib.google_client import GeminiClient
 from lib.order_papers.pdf_parser import OrderPaperParser
 from lib.id_generators import generate_order_paper_id
+from lib.roles import (
+    infer_role_kind,
+    normalize_person_name,
+    normalize_role_label,
+    split_role_labels,
+)
 
 
-def ingest_order_paper(pdf_path: str, chamber: str = "house") -> str:
+def ingest_order_paper(
+    pdf_path: str, chamber: str = "house", *, youtube_video_id: str | None = None
+) -> str:
     """Parse an order paper PDF using Gemini vision and save it to database.
 
     Args:
@@ -107,6 +115,64 @@ def ingest_order_paper(pdf_path: str, chamber: str = "house") -> str:
             ),
         )
 
+        if youtube_video_id:
+            for s in parsed_paper.speakers:
+                role_label_raw = (s.role or "").strip()
+                speaker_name = (s.name or "").strip()
+                if not role_label_raw or not speaker_name:
+                    continue
+
+                speaker_name_norm = normalize_person_name(speaker_name)
+                if not speaker_name_norm:
+                    continue
+
+                for role_label in split_role_labels(role_label_raw):
+                    role_label_norm = normalize_role_label(role_label)
+                    if not role_label_norm:
+                        continue
+
+                    postgres.execute_update(
+                        """
+                        INSERT INTO speaker_video_roles (
+                            youtube_video_id,
+                            speaker_id,
+                            speaker_name_raw,
+                            speaker_name_norm,
+                            role_label,
+                            role_label_norm,
+                            role_kind,
+                            source,
+                            source_id,
+                            confidence,
+                            evidence,
+                            updated_at
+                        )
+                        VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NOW())
+                        ON CONFLICT (
+                            youtube_video_id,
+                            speaker_name_norm,
+                            role_kind,
+                            role_label_norm,
+                            source,
+                            source_id
+                        )
+                        DO UPDATE SET
+                            speaker_name_raw = EXCLUDED.speaker_name_raw,
+                            role_label = EXCLUDED.role_label,
+                            updated_at = NOW()
+                        """,
+                        (
+                            youtube_video_id,
+                            speaker_name,
+                            speaker_name_norm,
+                            role_label,
+                            role_label_norm,
+                            infer_role_kind(role_label),
+                            "order_paper_pdf",
+                            order_paper_id,
+                        ),
+                    )
+
         for idx, item in enumerate(parsed_paper.agenda_items, 1):
             item_id = f"{order_paper_id}_{idx:03d}"
             postgres.execute_update(
@@ -154,10 +220,20 @@ def main() -> int:
         default="house",
         help="Chamber type (default: house)",
     )
+    parser.add_argument(
+        "--youtube-video-id",
+        type=str,
+        default=None,
+        help="YouTube video ID to attach speaker roles to",
+    )
     args = parser.parse_args()
 
     try:
-        order_paper_id = ingest_order_paper(args.pdf_path, args.chamber)
+        order_paper_id = ingest_order_paper(
+            args.pdf_path,
+            args.chamber,
+            youtube_video_id=args.youtube_video_id,
+        )
         print(f"\nOrder Paper ID: {order_paper_id}")
         return 0
     except Exception as e:

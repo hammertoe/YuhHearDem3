@@ -213,3 +213,56 @@ def test_agent_loop_strips_key_connections_section() -> None:
 
     result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
     assert "Key connections" not in result["answer"]
+
+
+def test_agent_loop_does_not_append_sources_line_when_missing_inline_links() -> None:
+    from lib.kg_agent_loop import KGAgentLoop
+
+    responses = [
+        _FakeResponse(
+            text=json.dumps(
+                {
+                    "answer": "Water policy was debated.",
+                    "cite_utterance_ids": ["utt_1", "utt_2"],
+                    "focus_node_ids": [],
+                }
+            ),
+            function_calls=None,
+        )
+    ]
+    client = _FakeGeminiClient(responses)
+    loop = KGAgentLoop(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        client=client,
+    )
+
+    result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
+    assert result["answer"] == "Water policy was debated."
+
+
+def test_agent_loop_keeps_existing_inline_source_links() -> None:
+    from lib.kg_agent_loop import KGAgentLoop
+
+    answer = "Water policy was debated [1](source:utt_1)."
+    responses = [
+        _FakeResponse(
+            text=json.dumps(
+                {
+                    "answer": answer,
+                    "cite_utterance_ids": ["utt_1"],
+                    "focus_node_ids": [],
+                }
+            ),
+            function_calls=None,
+        )
+    ]
+    client = _FakeGeminiClient(responses)
+    loop = KGAgentLoop(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        client=client,
+    )
+
+    result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
+    assert result["answer"] == answer

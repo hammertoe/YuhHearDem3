@@ -21,6 +21,7 @@ class ChatSource:
     timestamp_str: str
     speaker_id: str
     speaker_name: str
+    speaker_title: str | None
     text: str
     video_title: str | None
     video_date: str | None
@@ -150,7 +151,7 @@ class KGChatAgentV2:
         self,
         retrieval: dict[str, Any] | None,
         cite_utterance_ids: list[str],
-        max_sources: int = 8,
+        max_sources: int = 24,
     ) -> list[ChatSource]:
         if not retrieval:
             return []
@@ -171,6 +172,7 @@ class KGChatAgentV2:
                     timestamp_str=c.get("timestamp_str", ""),
                     speaker_id=c.get("speaker_id", ""),
                     speaker_name=c.get("speaker_name", ""),
+                    speaker_title=c.get("speaker_title"),
                     text=c.get("text", ""),
                     video_title=c.get("video_title"),
                     video_date=c.get("video_date"),
@@ -263,7 +265,12 @@ class KGChatAgentV2:
             ),
         )
 
-        sources = self._sources_from_retrieval(retrieval, cite_utterance_ids)
+        desired_sources = max(8, min(24, len(cite_utterance_ids) or 8))
+        sources = self._sources_from_retrieval(
+            retrieval,
+            cite_utterance_ids,
+            max_sources=desired_sources,
+        )
 
         return {
             "thread_id": thread_id,

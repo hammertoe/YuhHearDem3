@@ -105,6 +105,15 @@ class SpeakerStatsResponse(BaseModel):
     recent_contributions: list[dict[str, Any]]
 
 
+class SpeakerVideoRole(BaseModel):
+    role_label: str
+    role_kind: str
+    source: str
+    source_id: str
+    confidence: float | None = None
+    evidence: str | None = None
+
+
 class CreateThreadResponse(BaseModel):
     thread_id: str
     title: str | None
@@ -149,6 +158,7 @@ class ChatSource(BaseModel):
     timestamp_str: str
     speaker_id: str
     speaker_name: str
+    speaker_title: str | None = None
     text: str
     video_title: str | None
     video_date: str | None
@@ -779,6 +789,40 @@ async def get_speaker_stats(speaker_id: str) -> SpeakerStatsResponse:
         )
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get(
+    "/videos/{youtube_video_id}/speakers/{speaker_id}/roles",
+    response_model=list[SpeakerVideoRole],
+)
+async def get_speaker_roles_for_video(
+    youtube_video_id: str, speaker_id: str
+) -> list[SpeakerVideoRole]:
+    """Get session-scoped roles for a speaker in a given video."""
+
+    try:
+        rows = _get_postgres().execute_query(
+            """
+            SELECT role_label, role_kind, source, source_id, confidence, evidence
+            FROM speaker_video_roles
+            WHERE youtube_video_id = %s AND speaker_id = %s
+            ORDER BY role_kind, role_label
+            """,
+            (youtube_video_id, speaker_id),
+        )
+        return [
+            SpeakerVideoRole(
+                role_label=r[0],
+                role_kind=r[1],
+                source=r[2],
+                source_id=r[3],
+                confidence=r[4],
+                evidence=r[5],
+            )
+            for r in rows
+        ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

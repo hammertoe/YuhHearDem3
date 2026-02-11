@@ -9,7 +9,19 @@ type UIMessage = {
   content: string;
   createdAt?: string;
   sources?: ChatSource[];
+  citationIds?: string[];
 };
+
+function extractCitationIds(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== 'object') return [];
+  const rec = metadata as Record<string, unknown>;
+  const raw = rec.cite_utterance_ids;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((v) => String(v || '').trim())
+    .filter((v) => v.length > 0)
+    .slice(0, 12);
+}
 
 const EXAMPLE_PROMPTS = [
   'What did ministers say about water management recently?',
@@ -51,6 +63,57 @@ function formatSpeakerName(s: ChatSource): string {
     .trim();
 }
 
+function formatSpeakerTitle(s: ChatSource): string {
+  const raw = (s.speaker_title || '').trim();
+  if (!raw) return '';
+  if (raw.toLowerCase() === 'unknown') return '';
+
+  const smallWords = new Set(['and', 'or', 'of', 'the', 'for', 'to', 'in', 'on', 'with']);
+  const normalizeToken = (token: string, i: number): string => {
+    const base = token.trim();
+    if (!base) return base;
+
+    const lower = base.toLowerCase();
+    if (lower === 'm.p.' || lower === 'mp') return 'M.P.';
+    if (lower === 'j.p.' || lower === 'jp') return 'J.P.';
+    if (lower === 's.c.' || lower === 'sc') return 'S.C.';
+    if (lower === 'k.c.' || lower === 'kc') return 'K.C.';
+    if (i > 0 && smallWords.has(lower)) return lower;
+
+    return base.slice(0, 1).toUpperCase() + base.slice(1).toLowerCase();
+  };
+
+  return raw
+    .split(',')
+    .map((part) =>
+      part
+        .trim()
+        .split(/\s+/g)
+        .filter(Boolean)
+        .map((t, i) => normalizeToken(t, i))
+        .join(' ')
+    )
+    .join(', ');
+}
+
+function normalizeUtteranceId(id: string): string {
+  let raw = decodeURIComponent(String(id || '').trim());
+  raw = raw.replace(/^https?:\/\/[^#]+#src:/i, '');
+  raw = raw.replace(/^#src:/i, '');
+  raw = raw.replace(/^source:/i, '');
+  raw = raw.replace(/^utt_/i, '');
+  raw = raw.replace(/[\]\[),.;:]+$/g, '');
+  return raw.trim();
+}
+
+function normalizeCitationHref(href: string): string {
+  const raw = decodeURIComponent((href || '').trim());
+  if (raw.startsWith('#src:')) return raw;
+  if (raw.startsWith('source:')) return `#src:${raw.slice('source:'.length)}`;
+  if (/^https?:\/\/[^#]+#src:/i.test(raw)) return `#src:${raw.split('#src:')[1] || ''}`;
+  return raw;
+}
+
 function YouTubeIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -67,18 +130,131 @@ function YouTubeIcon({ className }: { className?: string }) {
   );
 }
 
-function MarkdownMessage({ content }: { content: string }) {
+function MarkdownMessage({
+  content,
+  sources,
+  citationIds,
+  messageId,
+}: {
+  content: string;
+  sources?: ChatSource[];
+  citationIds?: string[];
+  messageId: string;
+}) {
+  const normalizedInlineContent = useMemo(
+    () => content.replace(/\]\(source:([^)]+)\)/gi, '](#src:$1)'),
+    [content]
+  );
+
+  const inlineLinkIds = useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    const re = /\]\(#src:([^)]+)\)/gi;
+    let m: RegExpExecArray | null = re.exec(normalizedInlineContent);
+    while (m) {
+      const id = String(m[1] || '').trim();
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+      m = re.exec(normalizedInlineContent);
+    }
+    return ids;
+  }, [normalizedInlineContent]);
+
+  const linkIds = useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    const add = (id: string) => {
+      const raw = String(id || '').trim();
+      if (!raw || seen.has(raw)) return;
+      seen.add(raw);
+      ids.push(raw);
+    };
+
+    inlineLinkIds.forEach(add);
+    (sources || []).forEach((s) => add(s.utterance_id));
+    (citationIds || []).forEach(add);
+    return ids;
+  }, [inlineLinkIds, sources, citationIds]);
+
+  const sourceIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    linkIds.forEach((id, i) => {
+      const n = i + 1;
+      const raw = (id || '').trim();
+      const normalized = normalizeUtteranceId(raw);
+      if (raw) m.set(raw, n);
+      if (normalized) {
+        m.set(normalized, n);
+        m.set(`utt_${normalized}`, n);
+        m.set(normalized.toLowerCase(), n);
+        m.set(`utt_${normalized.toLowerCase()}`, n);
+      }
+    });
+    return m;
+  }, [linkIds]);
+
+  const contentWithFallbackLinks = useMemo(() => {
+    const hasInline = /\]\(#src:[^)]+\)/i.test(normalizedInlineContent);
+    if (hasInline) return normalizedInlineContent;
+    if (linkIds.length === 0) return normalizedInlineContent;
+
+    const markers = linkIds
+      .slice(0, 8)
+      .map((id, i) => `[${i + 1}](#src:${id})`)
+      .join(' ');
+    return `${normalizedInlineContent}\n\nCitations: ${markers}`;
+  }, [linkIds, normalizedInlineContent]);
+
+  const onJumpToSource = (utteranceId: string) => {
+    const normalized = normalizeUtteranceId(utteranceId);
+    const el =
+      document.getElementById(`src-${messageId}-${normalized}`) ||
+      document.getElementById(`src-${messageId}-${utteranceId}`);
+    if (el) {
+      // Update hash so users can copy/paste links and :target styling works.
+      history.replaceState(null, '', `#${el.id}`);
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('source-flash');
+      window.setTimeout(() => el.classList.remove('source-flash'), 1200);
+    }
+  };
+
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          a: ({ children, ...props }) => (
-            <a {...props} target="_blank" rel="noreferrer" />
-          ),
+          a: ({ children, href, ...props }) => {
+            const h = normalizeCitationHref(String(href || ''));
+            if (h.startsWith('#src:')) {
+              const utteranceId = normalizeUtteranceId(h.slice('#src:'.length));
+              const n =
+                sourceIndex.get(utteranceId) ||
+                sourceIndex.get(`utt_${utteranceId}`) ||
+                sourceIndex.get(utteranceId.toLowerCase()) ||
+                sourceIndex.get(`utt_${utteranceId.toLowerCase()}`);
+              const label = String(n || 1);
+              return (
+                <sup>
+                  <button
+                    type="button"
+                    onClick={() => onJumpToSource(utteranceId)}
+                    className="ml-0.5 align-super text-[0.72rem] font-semibold text-ink/65 underline decoration-ink/25 underline-offset-2 hover:text-ink"
+                    aria-label={n ? `Jump to source ${n}` : 'Jump to source'}
+                  >
+                    [{label}]
+                  </button>
+                </sup>
+              );
+            }
+
+            return <a href={h} target="_blank" rel="noreferrer" {...props} />;
+          },
         }}
       >
-        {content}
+        {contentWithFallbackLinks}
       </ReactMarkdown>
     </div>
   );
@@ -110,6 +286,7 @@ function App() {
                 role: m.role as 'user' | 'assistant',
                 content: m.content,
                 createdAt: m.created_at,
+                citationIds: extractCitationIds(m.metadata),
               }))
           );
           return;
@@ -171,6 +348,7 @@ function App() {
         content: res.assistant_message.content,
         createdAt: res.assistant_message.created_at,
         sources: res.sources || [],
+        citationIds: extractCitationIds(res.assistant_message.metadata),
       };
       setMessages((m) => [...m, assistant]);
     } catch (e) {
@@ -284,47 +462,55 @@ function App() {
                     className={m.role === 'user' ? 'msg-row msg-user' : 'msg-row msg-assistant'}
                   >
                     <div className={m.role === 'user' ? 'msg-bubble bubble-user' : 'msg-bubble bubble-assistant'}>
-                      <MarkdownMessage content={m.content} />
+                      <MarkdownMessage
+                        content={m.content}
+                        sources={m.sources}
+                        citationIds={m.citationIds}
+                        messageId={m.id}
+                      />
 
                       {m.role === 'assistant' && m.sources && m.sources.length > 0 && (
                         <div className="mt-4 border-t border-ink/10 pt-3">
                           <div className="text-xs font-semibold uppercase tracking-wide text-ink/60">
                             Sources
                           </div>
-                          <div className="mt-2 space-y-2">
-                            {m.sources.slice(0, 8).map((s) => (
+                          <div className="mt-2 space-y-1.5">
+                            {m.sources.map((s) => (
                               <a
                                 key={s.utterance_id}
+                                id={`src-${m.id}-${normalizeUtteranceId(s.utterance_id)}`}
                                 href={s.youtube_url}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="source-card"
                               >
-                                <div className="flex items-start gap-3">
-                                  <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm">
-                                    <YouTubeIcon className="h-4 w-4" />
+                                <div className="flex items-start gap-2">
+                                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-red-600 text-white">
+                                    <YouTubeIcon className="h-3 w-3" />
                                   </div>
 
                                   <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                      <div className="text-xs font-semibold text-ink">
+                                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                      <span className="text-xs font-semibold text-ink">
                                         {formatSpeakerName(s)}
-                                      </div>
-                                      {s.timestamp_str && (
-                                        <span className="source-pill">@ {s.timestamp_str}</span>
-                                      )}
-                                      {s.video_date && (
-                                        <span className="source-pill">{s.video_date}</span>
+                                      </span>
+                                      {formatSpeakerTitle(s) && (
+                                        <span className="text-[11px] text-ink/60">
+                                          {formatSpeakerTitle(s)}
+                                        </span>
                                       )}
                                     </div>
 
-                                    {s.video_title && (
-                                      <div className="mt-1 text-xs text-ink/70 source-title">
-                                        {s.video_title}
-                                      </div>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-ink/60">
+                                      {s.video_title && (
+                                        <span className="source-title">{s.video_title}</span>
+                                      )}
+                                      {s.timestamp_str && (
+                                        <span className="source-pill">@ {s.timestamp_str}</span>
+                                      )}
+                                    </div>
 
-                                    <div className="mt-2 text-xs text-ink/80 source-snippet">
+                                    <div className="mt-1 text-[11px] text-ink/80 source-snippet">
                                       <em>{s.text}</em>
                                     </div>
                                   </div>
