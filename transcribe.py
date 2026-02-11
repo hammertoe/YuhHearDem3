@@ -25,6 +25,10 @@ from google.genai.types import MediaResolution, ThinkingConfig
 from rapidfuzz import fuzz
 
 from lib.db.postgres_client import PostgresClient
+from lib.gemini_finish_reason import (
+    RetryableFinishReasonError,
+    raise_if_retryable_finish_reason,
+)
 
 
 load_dotenv()
@@ -499,6 +503,11 @@ def should_retry_request(retry_state: tenacity.RetryCallState) -> bool:
     if not retry_state.outcome:
         return False
     err = retry_state.outcome.exception()
+    if isinstance(err, RetryableFinishReasonError):
+        print(f"❌ {err}")
+        print("🔄 Retry: True")
+        return True
+
     if not isinstance(err, ClientError):
         return False
     print(f"❌ ClientError {err.code}: {err.message}")
@@ -589,6 +598,7 @@ def get_video_transcription(
                 config=config,
             )
             display_response_info(response)
+            raise_if_retryable_finish_reason(response)
 
     assert isinstance(response, GenerateContentResponse)
     return get_video_transcription_from_response(response)
@@ -726,6 +736,7 @@ def get_video_transcription_segment(
                 model=model_id, contents=contents, config=config
             )
             display_response_info(response)
+            raise_if_retryable_finish_reason(response)
 
     if isinstance(response, GenerateContentResponse) and isinstance(
         response.parsed, VideoTranscriptionEnhanced
