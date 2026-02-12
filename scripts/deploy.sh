@@ -16,11 +16,13 @@ echo "🚀 Starting YuhHearDem deployment..."
 cd "$APP_DIR"
 git fetch
 git reset --hard origin/main
+COMMIT_SHA=$(git rev-parse --short HEAD)
+echo "📌 Deploying commit: $COMMIT_SHA"
 
 # Build frontend
 cd "$APP_DIR/frontend"
 npm ci
-npm run build
+VITE_COMMIT_SHA="$COMMIT_SHA" npm run build
 
 # Sync frontend static files for nginx
 mkdir -p "$STATIC_DIR"
@@ -30,7 +32,6 @@ chown -R www-data:www-data "$STATIC_DIR"
 
 # Build Docker image
 cd "$APP_DIR"
-COMMIT_SHA=$(git rev-parse --short HEAD)
 docker build --build-arg VITE_COMMIT_SHA="$COMMIT_SHA" -t yuhheardem:latest .
 
 # Stop old container
