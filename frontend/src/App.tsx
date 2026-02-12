@@ -302,6 +302,7 @@ function App() {
       const saved = localStorage.getItem('yhd_thread_id');
       try {
         if (saved) {
+          console.log('[Initial Load] Loading existing thread:', saved);
           const t = await getThread(saved);
           setThreadId(saved);
           setConnected(true);
@@ -317,15 +318,30 @@ function App() {
                 followupQuestions: extractFollowupQuestions(m.metadata),
               }))
           );
+          console.log('[Initial Load] Thread loaded successfully');
           return;
         }
 
+        console.log('[Initial Load] No saved thread, creating new one...');
         const created = await createThread(null);
         localStorage.setItem('yhd_thread_id', created.thread_id);
         setThreadId(created.thread_id);
         setConnected(true);
+        console.log('[Initial Load] New thread created:', created.thread_id);
       } catch (_e) {
+        console.error('[Initial Load] Error loading thread:', _e);
         setConnected(false);
+        console.warn('[Initial Load] Clearing stale thread ID and creating fresh thread...');
+        
+        try {
+          const fresh = await createThread(null);
+          localStorage.setItem('yhd_thread_id', fresh.thread_id);
+          setThreadId(fresh.thread_id);
+          setConnected(true);
+          console.log('[Initial Load] Fresh thread created after error:', fresh.thread_id);
+        } catch (fallbackError) {
+          console.error('[Initial Load] Fallback thread creation also failed:', fallbackError);
+        }
       }
     };
     load();
@@ -381,9 +397,10 @@ function App() {
             : extractFollowupQuestions(res.assistant_message.metadata),
       };
       setMessages((m) => [...m, assistant]);
+      setConnected(true);
     } catch (e) {
-      setConnected(false);
       const err = e instanceof Error ? e.message : 'Failed to send message';
+      console.error('[Send Message] Error:', err);
       setMessages((m) => [
         ...m,
         {

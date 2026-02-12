@@ -6,7 +6,7 @@ set -e
 
 APP_DIR="/opt/yuhheardem"
 DOMAIN="beta.yuhheardem.com"
-PORT=8003
+PORT=8000
 
 echo "🚀 Starting YuhHearDem deployment..."
 
