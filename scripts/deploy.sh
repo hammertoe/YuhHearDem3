@@ -8,6 +8,7 @@ APP_DIR="/opt/yuhheardem"
 DOMAIN="beta.yuhheardem.com"
 PORT=8000
 ENV_FILE="$APP_DIR/.env"
+STATIC_DIR="/var/lib/yuhheardem/static"
 
 echo "🚀 Starting YuhHearDem deployment..."
 
@@ -20,6 +21,12 @@ git reset --hard origin/main
 cd "$APP_DIR/frontend"
 npm ci
 npm run build
+
+# Sync frontend static files for nginx
+mkdir -p "$STATIC_DIR"
+rsync -a --delete "$APP_DIR/frontend/dist/" "$STATIC_DIR/"
+find "$STATIC_DIR" -name '._*' -delete
+chown -R www-data:www-data "$STATIC_DIR"
 
 # Build Docker image
 cd "$APP_DIR"
