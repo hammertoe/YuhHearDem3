@@ -264,8 +264,12 @@ function MarkdownMessage({
     };
 
     (sources || []).forEach((s) => add(s.utterance_id));
-    (citationIds || []).forEach(add);
     inlineLinkIds.forEach(add);
+
+    // Fallback for older messages that have citation IDs but no sources in metadata.
+    if ((sources || []).length === 0) {
+      (citationIds || []).forEach(add);
+    }
     return ids;
   }, [inlineLinkIds, sources, citationIds]);
 

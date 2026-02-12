@@ -417,6 +417,24 @@ def test_infer_citation_ids_from_bracket_numbers_uses_retrieval_order() -> None:
     assert inferred == ["utt_111", "utt_333"]
 
 
+def test_infer_citation_ids_from_bracket_numbers_ignores_markdown_links() -> None:
+    from lib.kg_agent_loop import _infer_citation_ids_from_bracket_numbers
+
+    retrieval = {
+        "citations": [
+            {"utterance_id": "utt_111"},
+            {"utterance_id": "utt_222"},
+        ]
+    }
+
+    inferred = _infer_citation_ids_from_bracket_numbers(
+        "Inline [1](#src:utt_999) and [2](#src:utt_888)",
+        retrieval,
+    )
+
+    assert inferred == []
+
+
 def test_filter_to_known_citation_ids_matches_utt_prefix_variants() -> None:
     from lib.kg_agent_loop import _filter_to_known_citation_ids
 

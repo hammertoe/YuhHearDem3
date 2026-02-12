@@ -312,7 +312,9 @@ def _infer_citation_ids_from_bracket_numbers(
     if not citations:
         return []
 
-    indices = [int(m.group(1)) for m in re.finditer(r"\[(\d+)\]", answer or "")]
+    # Only infer plain numeric markers like "... [3] ...".
+    # Ignore markdown links such as "[3](#src:utt_123)".
+    indices = [int(m.group(1)) for m in re.finditer(r"\[(\d+)\](?!\s*\()", answer or "")]
     out: list[str] = []
     seen: set[str] = set()
     for idx in indices:
