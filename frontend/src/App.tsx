@@ -218,8 +218,10 @@ function MarkdownMessage({
     const seen = new Set<string>();
     const add = (id: string) => {
       const raw = String(id || '').trim();
-      if (!raw || seen.has(raw)) return;
-      seen.add(raw);
+      const canonical = normalizeUtteranceId(raw).toLowerCase();
+      const key = canonical || raw.toLowerCase();
+      if (!raw || seen.has(key)) return;
+      seen.add(key);
       ids.push(raw);
     };
 
@@ -231,16 +233,21 @@ function MarkdownMessage({
 
   const sourceIndex = useMemo(() => {
     const m = new Map<string, number>();
+    const setIfMissing = (key: string, index: number) => {
+      if (!key || m.has(key)) return;
+      m.set(key, index);
+    };
+
     linkIds.forEach((id, i) => {
       const n = i + 1;
       const raw = (id || '').trim();
       const normalized = normalizeUtteranceId(raw);
-      if (raw) m.set(raw, n);
+      if (raw) setIfMissing(raw, n);
       if (normalized) {
-        m.set(normalized, n);
-        m.set(`utt_${normalized}`, n);
-        m.set(normalized.toLowerCase(), n);
-        m.set(`utt_${normalized.toLowerCase()}`, n);
+        setIfMissing(normalized, n);
+        setIfMissing(`utt_${normalized}`, n);
+        setIfMissing(normalized.toLowerCase(), n);
+        setIfMissing(`utt_${normalized.toLowerCase()}`, n);
       }
     });
     return m;
