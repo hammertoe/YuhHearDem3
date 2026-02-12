@@ -348,6 +348,11 @@ function MarkdownMessage({
       }
     }
 
+    if (!el && (sources || []).length === 1) {
+      const candidates = document.querySelectorAll<HTMLElement>(`[id^="src-${messageId}-"]`);
+      el = candidates[0] || null;
+    }
+
     if (el) {
       history.replaceState(null, '', `#${el.id}`);
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -370,11 +375,11 @@ function MarkdownMessage({
                 sourceIndex.get(`utt_${utteranceId}`) ||
                 sourceIndex.get(utteranceId.toLowerCase()) ||
                 sourceIndex.get(`utt_${utteranceId.toLowerCase()}`);
-              const childText = Array.isArray(children)
-                ? children.map((c) => String(c || '')).join('')
-                : String(children || '');
-              const fallbackLabel = childText.replace(/[\[\]]/g, '').trim() || '?';
-              const label = n ? String(n) : fallbackLabel;
+              const label = n
+                ? String(n)
+                : (sources || []).length === 1
+                  ? '1'
+                  : '?';
               return (
                 <sup>
                   <button
