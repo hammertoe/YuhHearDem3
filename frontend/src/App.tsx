@@ -128,6 +128,26 @@ function normalizeCitationHref(href: string): string {
   return raw;
 }
 
+function normalizeCitationMarkup(content: string): string {
+  let text = content;
+
+  text = text.replace(/\]\(source:([^)]+)\)/gi, '](#src:$1)');
+  text = text.replace(/\[(cite|\d+)\]\s+\((#src:[^)]+)\)/gi, '[$1]($2)');
+
+  text = text.replace(/\[(cite|\d+)\]\(([^)]+)\)/gi, (_m, label: string, hrefs: string) => {
+    if (!/#src:/i.test(hrefs)) return `[${label}](${hrefs})`;
+
+    const links = (hrefs.match(/#src:[^,\s)]+/gi) || [])
+      .map((h) => h.trim())
+      .filter((h) => h.length > 0);
+
+    if (links.length <= 1) return `[${label}](${hrefs})`;
+    return links.map((h) => `[${label}](${h})`).join(' ');
+  });
+
+  return text;
+}
+
 // Bajan Flag Trident - The Broken Trident of Barbados
 // From https://upload.wikimedia.org/wikipedia/commons/a/a7/Barbados_trident.svg
 function TridentIcon({ className }: { className?: string }) {
@@ -173,7 +193,7 @@ function MarkdownMessage({
   messageId: string;
 }) {
   const normalizedInlineContent = useMemo(
-    () => content.replace(/\]\(source:([^)]+)\)/gi, '](#src:$1)'),
+    () => normalizeCitationMarkup(content),
     [content]
   );
 
