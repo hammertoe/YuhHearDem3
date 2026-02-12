@@ -15,7 +15,8 @@ from lib.kg_agent_loop import KGAgentLoop
 from lib.utils.config import config
 
 
-_SRC_MARKDOWN_LINK_RE = re.compile(r"\]\(([^)]+)\)", re.IGNORECASE)
+_SRC_MARKDOWN_LINK_RE = re.compile(r"\]\s*\(([^)]+)\)", re.IGNORECASE)
+_SRC_TOKEN_RE = re.compile(r"(?:#src:|source:)([^,\s)]+)", re.IGNORECASE)
 
 
 def _should_trace() -> bool:
@@ -59,20 +60,16 @@ def _extract_answer_citation_ids(answer: str) -> list[str]:
     seen: set[str] = set()
     for match in _SRC_MARKDOWN_LINK_RE.finditer(answer or ""):
         href = unquote(str(match.group(1) or "").strip())
-        href_lower = href.lower()
-        citation_id = ""
-        if href_lower.startswith("#src:"):
-            citation_id = href[5:]
-        elif href_lower.startswith("source:"):
-            citation_id = href[7:]
-        elif re.match(r"^https?://[^#]+#src:", href, re.IGNORECASE):
-            citation_id = href.split("#src:", 1)[1]
 
-        citation_id = citation_id.strip()
-        if not citation_id or citation_id in seen:
-            continue
-        seen.add(citation_id)
-        out.append(citation_id)
+        token_matches = [m.group(1).strip() for m in _SRC_TOKEN_RE.finditer(href)]
+        if not token_matches and re.match(r"^https?://[^#]+#src:", href, re.IGNORECASE):
+            token_matches = [href.split("#src:", 1)[1].strip()]
+
+        for citation_id in token_matches:
+            if not citation_id or citation_id in seen:
+                continue
+            seen.add(citation_id)
+            out.append(citation_id)
     return out
 
 
@@ -462,11 +459,20 @@ class KGChatAgentV2:
             if str(q or "").strip()
         ][:4]
 
+        desired_sources = max(8, min(24, len(cite_utterance_ids) or 8))
+        sources = self._sources_from_retrieval(
+            retrieval,
+            cite_utterance_ids,
+            max_sources=desired_sources,
+        )
+        serialized_sources = [s.__dict__ for s in sources]
+
         assistant_message_id = str(uuid.uuid4())
         metadata = {
             "cite_utterance_ids": cite_utterance_ids,
             "focus_node_ids": focus_node_ids,
             "followup_questions": followup_questions,
+            "sources": serialized_sources,
             "retrieval_debug": (retrieval or {}).get("debug")
             if isinstance(retrieval, dict)
             else None,
@@ -514,13 +520,6 @@ class KGChatAgentV2:
             ),
         )
 
-        desired_sources = max(8, min(24, len(cite_utterance_ids) or 8))
-        sources = self._sources_from_retrieval(
-            retrieval,
-            cite_utterance_ids,
-            max_sources=desired_sources,
-        )
-
         _trace_section_start("RESPONSE SUMMARY")
         _trace_print("Assistant Message ID", assistant_message_id)
         _trace_print("Answer Length", f"{len(answer)} chars")
@@ -538,7 +537,7 @@ class KGChatAgentV2:
                 "created_at": str(datetime.now()),
                 "metadata": metadata,
             },
-            "sources": [s.__dict__ for s in sources],
+            "sources": serialized_sources,
             "focus_node_ids": focus_node_ids,
             "followup_questions": followup_questions,
             "debug": {

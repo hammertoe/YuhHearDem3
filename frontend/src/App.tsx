@@ -18,10 +18,48 @@ function extractCitationIds(metadata: unknown): string[] {
   const rec = metadata as Record<string, unknown>;
   const raw = rec.cite_utterance_ids;
   if (!Array.isArray(raw)) return [];
+
+  const seen = new Set<string>();
   return raw
     .map((v) => String(v || '').trim())
-    .filter((v) => v.length > 0)
+    .filter((v) => {
+      if (!v) return false;
+      const canonical = normalizeUtteranceId(v).toLowerCase();
+      const key = canonical || v.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice(0, 12);
+}
+
+function extractSources(metadata: unknown): ChatSource[] {
+  if (!metadata || typeof metadata !== 'object') return [];
+  const rec = metadata as Record<string, unknown>;
+  const raw = rec.sources;
+  if (!Array.isArray(raw)) return [];
+
+  const out: ChatSource[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const source = item as Record<string, unknown>;
+    const utteranceId = String(source.utterance_id || '').trim();
+    if (!utteranceId) continue;
+    out.push({
+      utterance_id: utteranceId,
+      youtube_video_id: String(source.youtube_video_id || ''),
+      youtube_url: String(source.youtube_url || ''),
+      seconds_since_start: Number(source.seconds_since_start || 0),
+      timestamp_str: String(source.timestamp_str || ''),
+      speaker_id: String(source.speaker_id || ''),
+      speaker_name: String(source.speaker_name || ''),
+      speaker_title: source.speaker_title ? String(source.speaker_title) : null,
+      text: String(source.text || ''),
+      video_title: source.video_title ? String(source.video_title) : null,
+      video_date: source.video_date ? String(source.video_date) : null,
+    });
+  }
+  return out;
 }
 
 function extractFollowupQuestions(metadata: unknown): string[] {
@@ -225,9 +263,9 @@ function MarkdownMessage({
       ids.push(raw);
     };
 
-    inlineLinkIds.forEach(add);
     (sources || []).forEach((s) => add(s.utterance_id));
     (citationIds || []).forEach(add);
+    inlineLinkIds.forEach(add);
     return ids;
   }, [inlineLinkIds, sources, citationIds]);
 
@@ -292,7 +330,11 @@ function MarkdownMessage({
                 sourceIndex.get(`utt_${utteranceId}`) ||
                 sourceIndex.get(utteranceId.toLowerCase()) ||
                 sourceIndex.get(`utt_${utteranceId.toLowerCase()}`);
-              const label = String(n || 1);
+              const childText = Array.isArray(children)
+                ? children.map((c) => String(c || '')).join('')
+                : String(children || '');
+              const fallbackLabel = childText.replace(/[\[\]]/g, '').trim() || '?';
+              const label = n ? String(n) : fallbackLabel;
               return (
                 <sup>
                   <button
@@ -343,6 +385,7 @@ function App() {
                 role: m.role as 'user' | 'assistant',
                 content: m.content,
                 createdAt: m.created_at,
+                sources: extractSources(m.metadata),
                 citationIds: extractCitationIds(m.metadata),
                 followupQuestions: extractFollowupQuestions(m.metadata),
               }))

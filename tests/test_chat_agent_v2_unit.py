@@ -14,6 +14,14 @@ def test_extract_answer_citation_ids_should_parse_supported_link_formats() -> No
     assert got == ["utt_1", "utt_2", "utt_3"]
 
 
+def test_extract_answer_citation_ids_should_parse_grouped_and_spaced_links() -> None:
+    answer = "Grouped [cite] (#src:utt_1, #src:utt_2). Source format [x](source:utt_3)."
+
+    got = _extract_answer_citation_ids(answer)
+
+    assert got == ["utt_1", "utt_2", "utt_3"]
+
+
 def test_merge_cite_utterance_ids_should_include_answer_links_and_cite_ids() -> None:
     retrieval = {
         "citations": [
@@ -59,6 +67,23 @@ def test_merge_cite_utterance_ids_should_match_known_ids_with_utt_prefix_variant
     )
 
     assert got == ["utt_abc", "utt_def"]
+
+
+def test_merge_cite_utterance_ids_should_expand_grouped_src_links() -> None:
+    retrieval = {
+        "citations": [
+            {"utterance_id": "utt_1"},
+            {"utterance_id": "utt_2"},
+        ]
+    }
+
+    got = _merge_cite_utterance_ids(
+        answer="Grouped [cite](#src:utt_1, #src:utt_2)",
+        cite_utterance_ids=[],
+        retrieval=retrieval,
+    )
+
+    assert got == ["utt_1", "utt_2"]
 
 
 def test_merge_cite_utterance_ids_should_keep_well_formed_unknown_ids_for_db_fallback() -> None:

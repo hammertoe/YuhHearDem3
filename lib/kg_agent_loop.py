@@ -326,6 +326,81 @@ def _infer_citation_ids_from_bracket_numbers(
     return out
 
 
+def _normalize_citation_id(raw_id: str) -> str:
+    raw = str(raw_id or "").strip()
+    raw = re.sub(r"^https?://[^#]+#", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"^#?src:", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"^source:", "", raw, flags=re.IGNORECASE)
+    return raw.strip()
+
+
+def _citation_lookup_keys(citation_id: str) -> list[str]:
+    normalized = _normalize_citation_id(citation_id)
+    if not normalized:
+        return []
+
+    keys = [normalized, normalized.lower()]
+    if normalized.startswith("utt_"):
+        bare = normalized[4:]
+        if bare:
+            keys.extend([bare, bare.lower()])
+    else:
+        keys.extend([f"utt_{normalized}", f"utt_{normalized.lower()}"])
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def _infer_citation_ids_from_src_links(answer: str, retrieval: dict[str, Any] | None) -> list[str]:
+    src_tokens = [
+        m.group(1).strip()
+        for m in re.finditer(r"(?:#src:|source:)([^,\s)]+)", answer or "", re.IGNORECASE)
+    ]
+    if not src_tokens:
+        return []
+
+    known_lookup: dict[str, str] = {}
+    if isinstance(retrieval, dict):
+        for citation in retrieval.get("citations") or []:
+            if not isinstance(citation, dict):
+                continue
+            known_id = str(citation.get("utterance_id") or "").strip()
+            if not known_id:
+                continue
+            for key in _citation_lookup_keys(known_id):
+                known_lookup[key] = known_id
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for token in src_tokens:
+        normalized = _normalize_citation_id(token)
+        if not normalized:
+            continue
+
+        resolved = normalized
+        if known_lookup:
+            matched = None
+            for key in _citation_lookup_keys(normalized):
+                if key in known_lookup:
+                    matched = known_lookup[key]
+                    break
+            if matched is None:
+                continue
+            resolved = matched
+
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        out.append(resolved)
+    return out
+
+
 def _filter_to_known_citation_ids(
     cite_utterance_ids: list[str],
     retrieval: dict[str, Any] | None,
@@ -333,26 +408,52 @@ def _filter_to_known_citation_ids(
     if not cite_utterance_ids:
         return []
     if not isinstance(retrieval, dict):
-        return [str(x or "").strip() for x in cite_utterance_ids if str(x or "").strip()]
+        out: list[str] = []
+        seen: set[str] = set()
+        for raw in cite_utterance_ids:
+            uid = _normalize_citation_id(str(raw or ""))
+            key = uid.lower()
+            if not uid or key in seen:
+                continue
+            seen.add(key)
+            out.append(uid)
+        return out
 
-    known = {
+    known_ids = [
         str(c.get("utterance_id") or "").strip()
         for c in (retrieval.get("citations") or [])
         if isinstance(c, dict)
-    }
-    known.discard("")
-    if not known:
-        return [str(x or "").strip() for x in cite_utterance_ids if str(x or "").strip()]
+    ]
+    known_ids = [k for k in known_ids if k]
+    if not known_ids:
+        return [
+            _normalize_citation_id(str(x or ""))
+            for x in cite_utterance_ids
+            if _normalize_citation_id(str(x or ""))
+        ]
+
+    known_lookup: dict[str, str] = {}
+    for known_id in known_ids:
+        for key in _citation_lookup_keys(known_id):
+            known_lookup[key] = known_id
 
     out: list[str] = []
     seen: set[str] = set()
     for raw in cite_utterance_ids:
-        uid = str(raw or "").strip()
-        if not uid or uid in seen:
+        uid = _normalize_citation_id(str(raw or ""))
+        if not uid:
             continue
-        if uid in known:
-            seen.add(uid)
-            out.append(uid)
+
+        resolved = None
+        for key in _citation_lookup_keys(uid):
+            if key in known_lookup:
+                resolved = known_lookup[key]
+                break
+
+        if not resolved or resolved in seen:
+            continue
+        seen.add(resolved)
+        out.append(resolved)
     return out
 
 
@@ -755,6 +856,7 @@ class KGAgentLoop:
         inferred_ids = _infer_citation_ids_from_bracket_numbers(
             parsed.get("answer", ""), last_retrieval
         )
+        inferred_ids += _infer_citation_ids_from_src_links(parsed.get("answer", ""), last_retrieval)
         for inferred in inferred_ids:
             if inferred not in cite_ids:
                 cite_ids.append(inferred)

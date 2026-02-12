@@ -415,3 +415,42 @@ def test_infer_citation_ids_from_bracket_numbers_uses_retrieval_order() -> None:
     )
 
     assert inferred == ["utt_111", "utt_333"]
+
+
+def test_filter_to_known_citation_ids_matches_utt_prefix_variants() -> None:
+    from lib.kg_agent_loop import _filter_to_known_citation_ids
+
+    retrieval = {
+        "citations": [
+            {"utterance_id": "TNXMUaNl5wg:687"},
+            {"utterance_id": "AqlXNpcikR4:2161"},
+        ]
+    }
+
+    filtered = _filter_to_known_citation_ids(
+        ["utt_TNXMUaNl5wg:687", "AqlXNpcikR4:2161", "missing"],
+        retrieval,
+    )
+
+    assert filtered == ["TNXMUaNl5wg:687", "AqlXNpcikR4:2161"]
+
+
+def test_infer_citation_ids_from_src_links_parses_grouped_or_malformed_text() -> None:
+    from lib.kg_agent_loop import _infer_citation_ids_from_src_links
+
+    retrieval = {
+        "citations": [
+            {"utterance_id": "TNXMUaNl5wg:687"},
+            {"utterance_id": "AqlXNpcikR4:2161"},
+            {"utterance_id": "AqlXNpcikR4:126"},
+        ]
+    }
+
+    answer = (
+        "Quote [cite] (#src:utt_TNXMUaNl5wg:687, #src:utt_AqlXNpcikR4:2161), "
+        "and another source: #src:utt_AqlXNpcikR4:126"
+    )
+
+    inferred = _infer_citation_ids_from_src_links(answer, retrieval)
+
+    assert inferred == ["TNXMUaNl5wg:687", "AqlXNpcikR4:2161", "AqlXNpcikR4:126"]
