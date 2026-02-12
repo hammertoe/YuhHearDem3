@@ -332,18 +332,20 @@ function App() {
   }, []);
 
   const onClear = async () => {
+    console.log('[Clear Chat] Clearing chat and creating new thread...');
     localStorage.removeItem('yhd_thread_id');
     setThreadId(null);
     setMessages([]);
     setInput('');
-    setConnected(null);
-
+    setConnected(true);
+    
     try {
       const created = await createThread(null);
+      console.log('[Clear Chat] New thread created:', created);
       localStorage.setItem('yhd_thread_id', created.thread_id);
       setThreadId(created.thread_id);
-      setConnected(true);
     } catch (_e) {
+      console.error('[Clear Chat] Failed to create new thread:', _e);
       setConnected(false);
     }
   };

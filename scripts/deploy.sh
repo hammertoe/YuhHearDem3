@@ -45,13 +45,26 @@ echo "⏳ Waiting for container to start..."
 sleep 5
 
 # Test health endpoint
+echo "⏳ Waiting for container to start..."
+sleep 5
+
+# Test health endpoint
+health_passed=false
 for i in {1..10}; do
-    if curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; then
-        echo "✅ Container is healthy!"
-        break
-    fi
-    echo "⏳ Waiting for health check... ($i/10)"
-    sleep 2
+  health_response=$(curl -s -w "\n%{http_code}" "http://localhost:$PORT/health" 2>&1)
+  health_code=$(echo "$health_response" | tail -1)
+  if [ "$health_code" = "200" ]; then
+    health_passed=true
+    echo "✅ Container is healthy! (HTTP $health_code)"
+    break
+  else
+    echo "⏳ Health check failed (HTTP $health_code)... ($i/10)"
+  fi
+  sleep 2
 done
+
+if [ "$health_passed" = false ]; then
+  echo "❌ Health check failed after 10 attempts. Continuing anyway..."
+fi
 
 echo "✅ Deployment complete at http://$DOMAIN"
