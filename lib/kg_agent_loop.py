@@ -269,11 +269,11 @@ def _clean_answer_text(text: str | None) -> str:
     raw = _LEADING_INTERJECTION_RE.sub("", raw).lstrip()
     raw = _KEY_CONNECTIONS_BLOCK_RE.sub("", raw).strip()
     raw = _promote_section_headings(raw)
-    raw = _strip_embedded_followup_questions(raw)
+    raw, _ = _extract_embedded_followup_questions(raw)
     return raw
 
 
-def _strip_embedded_followup_questions(text: str) -> str:
+def _extract_embedded_followup_questions(text: str) -> tuple[str, list[str]]:
     lines = text.splitlines()
     marker_idx = -1
     for i, line in enumerate(lines):
@@ -282,17 +282,48 @@ def _strip_embedded_followup_questions(text: str) -> str:
             break
 
     if marker_idx < 0:
-        return text
+        return text, []
 
-    tail_lines = [ln.strip() for ln in lines[marker_idx + 1 :] if ln.strip()]
+    tail_lines = [ln.strip() for ln in lines[marker_idx + 1 :] if ln.strip() and ln.strip() != "-"]
     questionish = sum(1 for ln in tail_lines if ln.endswith("?"))
 
     # Only strip when this clearly looks like a generated follow-up section.
     if questionish < 2:
-        return text
+        return text, []
+
+    followups = [re.sub(r"^[-*\d.)\s]+", "", ln).strip() for ln in tail_lines if ln.endswith("?")]
+    followups = [q for q in followups if q]
 
     trimmed = "\n".join(lines[:marker_idx]).rstrip()
-    return trimmed
+    return trimmed, followups
+
+
+def _infer_citation_ids_from_bracket_numbers(
+    answer: str, retrieval: dict[str, Any] | None
+) -> list[str]:
+    if not isinstance(retrieval, dict):
+        return []
+
+    citations = [
+        c
+        for c in (retrieval.get("citations") or [])
+        if isinstance(c, dict) and str(c.get("utterance_id") or "").strip()
+    ]
+    if not citations:
+        return []
+
+    indices = [int(m.group(1)) for m in re.finditer(r"\[(\d+)\]", answer or "")]
+    out: list[str] = []
+    seen: set[str] = set()
+    for idx in indices:
+        if idx <= 0 or idx > len(citations):
+            continue
+        uid = str(citations[idx - 1].get("utterance_id") or "").strip()
+        if not uid or uid in seen:
+            continue
+        seen.add(uid)
+        out.append(uid)
+    return out
 
 
 def _filter_to_known_citation_ids(
@@ -701,10 +732,33 @@ class KGAgentLoop:
             if str(q or "").strip()
         ][:4]
 
-        parsed["cite_utterance_ids"] = _filter_to_known_citation_ids(
+        cleaned_answer, embedded_followups = _extract_embedded_followup_questions(
+            str(parsed.get("answer") or "")
+        )
+        if embedded_followups:
+            merged_followups = list(parsed.get("followup_questions") or []) + embedded_followups
+            deduped: list[str] = []
+            seen_followups: set[str] = set()
+            for q in merged_followups:
+                normalized_q = str(q).strip()
+                if not normalized_q or normalized_q in seen_followups:
+                    continue
+                seen_followups.add(normalized_q)
+                deduped.append(normalized_q)
+            parsed["followup_questions"] = deduped[:4]
+        parsed["answer"] = cleaned_answer
+
+        cite_ids = _filter_to_known_citation_ids(
             list(parsed.get("cite_utterance_ids") or []),
             last_retrieval,
         )
+        inferred_ids = _infer_citation_ids_from_bracket_numbers(
+            parsed.get("answer", ""), last_retrieval
+        )
+        for inferred in inferred_ids:
+            if inferred not in cite_ids:
+                cite_ids.append(inferred)
+        parsed["cite_utterance_ids"] = cite_ids
 
         parsed["answer"] = _clean_answer_text(parsed.get("answer"))
         parsed["retrieval"] = last_retrieval

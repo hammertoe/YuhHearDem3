@@ -373,3 +373,43 @@ def test_agent_loop_strips_embedded_followup_questions_from_answer() -> None:
     result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
     assert "follow-up questions" not in result["answer"].lower()
     assert result["answer"] == "Water policy was debated [1](#src:utt_1)."
+
+
+def test_extract_embedded_followups_when_model_puts_them_in_answer_text() -> None:
+    from lib.kg_agent_loop import _extract_embedded_followup_questions
+
+    answer = (
+        "Main answer paragraph.\n\n"
+        "Here are some follow-up questions you might have:\n"
+        "- What changed in 2023?\n"
+        "- Who led the debate?\n"
+        "- Which bill was referenced?"
+    )
+
+    cleaned, questions = _extract_embedded_followup_questions(answer)
+
+    assert cleaned == "Main answer paragraph."
+    assert questions == [
+        "What changed in 2023?",
+        "Who led the debate?",
+        "Which bill was referenced?",
+    ]
+
+
+def test_infer_citation_ids_from_bracket_numbers_uses_retrieval_order() -> None:
+    from lib.kg_agent_loop import _infer_citation_ids_from_bracket_numbers
+
+    retrieval = {
+        "citations": [
+            {"utterance_id": "utt_111"},
+            {"utterance_id": "utt_222"},
+            {"utterance_id": "utt_333"},
+        ]
+    }
+
+    inferred = _infer_citation_ids_from_bracket_numbers(
+        "Point one [1]. Point three [3]. Repeat [1].",
+        retrieval,
+    )
+
+    assert inferred == ["utt_111", "utt_333"]
