@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -910,6 +911,12 @@ async def send_message(thread_id: str, request: ChatMessageRequest):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+async def health():
+    """Health check endpoint for deployment monitoring."""
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 
 @app.get("/api")
