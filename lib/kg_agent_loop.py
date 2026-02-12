@@ -333,6 +333,7 @@ def _normalize_citation_id(raw_id: str) -> str:
     raw = re.sub(r"^https?://[^#]+#", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"^#?src:", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"^source:", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"[\]\),.;]+$", "", raw)
     return raw.strip()
 
 
@@ -362,7 +363,7 @@ def _citation_lookup_keys(citation_id: str) -> list[str]:
 def _infer_citation_ids_from_src_links(answer: str, retrieval: dict[str, Any] | None) -> list[str]:
     src_tokens = [
         m.group(1).strip()
-        for m in re.finditer(r"(?:#src:|source:)([^,\s)]+)", answer or "", re.IGNORECASE)
+        for m in re.finditer(r"(?:#src:|source:)([^,\s)\]]+)", answer or "", re.IGNORECASE)
     ]
     if not src_tokens:
         return []

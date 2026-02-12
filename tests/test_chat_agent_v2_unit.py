@@ -22,6 +22,14 @@ def test_extract_answer_citation_ids_should_parse_grouped_and_spaced_links() -> 
     assert got == ["utt_1", "utt_2", "utt_3"]
 
 
+def test_extract_answer_citation_ids_should_parse_malformed_closing_bracket_links() -> None:
+    answer = "Broken [cite] (#src:utt_1]. Also [2](#src:utt_2]."
+
+    got = _extract_answer_citation_ids(answer)
+
+    assert got == ["utt_1", "utt_2"]
+
+
 def test_merge_cite_utterance_ids_should_include_answer_links_and_cite_ids() -> None:
     retrieval = {
         "citations": [

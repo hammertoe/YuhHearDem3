@@ -15,8 +15,8 @@ from lib.kg_agent_loop import KGAgentLoop
 from lib.utils.config import config
 
 
-_SRC_MARKDOWN_LINK_RE = re.compile(r"\]\s*\(([^)]+)\)", re.IGNORECASE)
-_SRC_TOKEN_RE = re.compile(r"(?:#src:|source:)([^,\s)]+)", re.IGNORECASE)
+_SRC_MARKDOWN_LINK_RE = re.compile(r"\]\s*\(([^)\]]+)[)\]]", re.IGNORECASE)
+_SRC_TOKEN_RE = re.compile(r"(?:#src:|source:)([^,\s)\]]+)", re.IGNORECASE)
 
 
 def _should_trace() -> bool:
@@ -79,6 +79,7 @@ def _normalize_citation_id(raw_id: str) -> str:
     raw = re.sub(r"^https?://[^#]+#", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"^#?src:", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"^source:", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"[\]\),.;]+$", "", raw)
     return raw.strip()
 
 

@@ -472,3 +472,19 @@ def test_infer_citation_ids_from_src_links_parses_grouped_or_malformed_text() ->
     inferred = _infer_citation_ids_from_src_links(answer, retrieval)
 
     assert inferred == ["TNXMUaNl5wg:687", "AqlXNpcikR4:2161", "AqlXNpcikR4:126"]
+
+
+def test_infer_citation_ids_from_src_links_strips_trailing_brackets() -> None:
+    from lib.kg_agent_loop import _infer_citation_ids_from_src_links
+
+    retrieval = {
+        "citations": [
+            {"utterance_id": "FyrySNA48FM:4013"},
+        ]
+    }
+
+    answer = "Public funds quote [cite] (#src:FyrySNA48FM:4013]."
+
+    inferred = _infer_citation_ids_from_src_links(answer, retrieval)
+
+    assert inferred == ["FyrySNA48FM:4013"]

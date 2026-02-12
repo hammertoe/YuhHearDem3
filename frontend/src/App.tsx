@@ -170,7 +170,12 @@ function normalizeCitationMarkup(content: string): string {
   let text = content;
 
   text = text.replace(/\]\(source:([^)]+)\)/gi, '](#src:$1)');
-  text = text.replace(/\[(cite|\d+)\]\s+\((#src:[^)]+)\)/gi, '[$1]($2)');
+
+  // Fix malformed citation markdown variants from model output:
+  // - [cite] (#src:abc)
+  // - [cite](#src:abc]
+  // - [cite] (#src:abc]
+  text = text.replace(/\[(cite|\d+)\]\s*\(([^)\]]+)[\)\]]/gi, '[$1]($2)');
 
   text = text.replace(/\[(cite|\d+)\]\(([^)]+)\)/gi, (_m, label: string, hrefs: string) => {
     if (!/#src:/i.test(hrefs)) return `[${label}](${hrefs})`;
