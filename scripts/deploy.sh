@@ -7,6 +7,7 @@ set -e
 APP_DIR="/opt/yuhheardem"
 DOMAIN="beta.yuhheardem.com"
 PORT=8000
+ENV_FILE="$APP_DIR/.env"
 
 echo "🚀 Starting YuhHearDem deployment..."
 
@@ -28,23 +29,20 @@ docker build -t yuhheardem:latest .
 docker rm -f yhd-web 2>/dev/null || true
 
 # Run new container
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ Missing env file: $ENV_FILE"
+    exit 1
+fi
+
 docker run -d \
     --name yhd-web \
     --network host \
-    -e DATABASE_URL="${DATABASE_URL}" \
-    -e GOOGLE_API_KEY="${GOOGLE_API_KEY}" \
-    -e GOOGLE_API_KEY_2="${GOOGLE_API_KEY_2}" \
+    --env-file "$ENV_FILE" \
     -e GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}" \
-    -e MEMGRAPH_HOST="${MEMGRAPH_HOST:-localhost}" \
-    -e MEMGRAPH_PORT="${MEMGRAPH_PORT:-7687}" \
     --restart unless-stopped \
     yuhheardem:latest
 
 # Wait for container to be healthy
-echo "⏳ Waiting for container to start..."
-sleep 5
-
-# Test health endpoint
 echo "⏳ Waiting for container to start..."
 sleep 5
 
