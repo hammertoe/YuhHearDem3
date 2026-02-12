@@ -161,6 +161,41 @@ def test_agent_loop_preserves_model_tool_call_content_when_continuing() -> None:
     assert model_tool_call_content in second_contents
 
 
+def test_agent_loop_does_not_set_json_response_mime_with_tools_enabled() -> None:
+    from lib.kg_agent_loop import KGAgentLoop
+
+    tool_call = _FakeFunctionCall(
+        name="kg_hybrid_graph_rag",
+        args={"query": "water"},
+    )
+
+    responses = [
+        _FakeResponse(text=None, function_calls=[tool_call]),
+        _FakeResponse(
+            text=json.dumps(
+                {
+                    "answer": "ok",
+                    "cite_utterance_ids": [],
+                    "focus_node_ids": [],
+                    "followup_questions": [],
+                }
+            ),
+            function_calls=None,
+        ),
+    ]
+    client = _FakeGeminiClient(responses)
+    loop = KGAgentLoop(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        client=client,
+    )
+
+    asyncio.run(loop.run(user_message="Tell me about water", history=[]))
+
+    second_config = client.aio.models.calls[1]["config"]
+    assert getattr(second_config, "response_mime_type", None) in (None, "")
+
+
 def test_agent_loop_strips_wuhloss_leading_interjection() -> None:
     """Avoid starting answers with filler like 'Wuhloss,'"""
 

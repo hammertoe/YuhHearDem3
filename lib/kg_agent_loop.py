@@ -417,8 +417,11 @@ class KGAgentLoop:
             "max_output_tokens": 2048,
         }
         if not is_tool_call:
-            config_params["response_schema"] = AGENT_RESPONSE_SCHEMA
-            config_params["response_mime_type"] = "application/json"
+            # Gemini function-calling requests reject response_mime_type=response_schema
+            # when tools are present. Keep tools enabled for follow-up tool calls and
+            # rely on prompt + best-effort JSON parsing for structured final output.
+            config_params.pop("response_schema", None)
+            config_params.pop("response_mime_type", None)
         if not self.enable_thinking:
             config_params["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         config = types.GenerateContentConfig(**config_params)
