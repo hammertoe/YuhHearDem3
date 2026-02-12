@@ -42,6 +42,8 @@ const EXAMPLE_PROMPTS = [
   'What bills were mentioned about education, and where?',
 ];
 
+const BUILD_COMMIT = (import.meta.env.VITE_COMMIT_SHA || 'dev').slice(0, 7);
+
 function formatSpeakerName(s: ChatSource): string {
   const raw = (s.speaker_name || '').trim();
   if (raw && !raw.startsWith('s_')) {
@@ -660,6 +662,7 @@ function App() {
           <p className="text-sm font-accent text-ink/50">
             Made with pride for Barbados · Pride & Industry
           </p>
+          <p className="mt-1 text-xs font-accent text-ink/40">Build {BUILD_COMMIT}</p>
         </footer>
       </div>
     </div>

@@ -23,7 +23,8 @@ npm run build
 
 # Build Docker image
 cd "$APP_DIR"
-docker build -t yuhheardem:latest .
+COMMIT_SHA=$(git rev-parse --short HEAD)
+docker build --build-arg VITE_COMMIT_SHA="$COMMIT_SHA" -t yuhheardem:latest .
 
 # Stop old container
 docker rm -f yhd-web 2>/dev/null || true

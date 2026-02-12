@@ -13,6 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+ARG VITE_COMMIT_SHA=dev
+ENV VITE_COMMIT_SHA=$VITE_COMMIT_SHA
+
 RUN cd frontend && npm ci && npm run build && cp public/parliament-bg.jpg dist/
 
 FROM python:3.13-slim
