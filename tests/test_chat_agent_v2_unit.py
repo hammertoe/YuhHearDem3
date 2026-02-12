@@ -94,6 +94,23 @@ def test_merge_cite_utterance_ids_should_expand_grouped_src_links() -> None:
     assert got == ["utt_1", "utt_2"]
 
 
+def test_merge_cite_utterance_ids_should_resolve_utt_seconds_to_unique_known_id() -> None:
+    retrieval = {
+        "citations": [
+            {"utterance_id": "AEOFDga2dh8:10848"},
+            {"utterance_id": "otherVid:220"},
+        ]
+    }
+
+    got = _merge_cite_utterance_ids(
+        answer="Education Bill [cite](#src:utt_10848)",
+        cite_utterance_ids=[],
+        retrieval=retrieval,
+    )
+
+    assert got == ["AEOFDga2dh8:10848"]
+
+
 def test_merge_cite_utterance_ids_should_keep_well_formed_unknown_ids_for_db_fallback() -> None:
     retrieval = {
         "citations": [

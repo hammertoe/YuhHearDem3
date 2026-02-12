@@ -134,6 +134,14 @@ def _merge_cite_utterance_ids(
         for key in _citation_lookup_keys(known_id):
             known_lookup[key] = known_id
 
+    suffix_counts: dict[str, int] = {}
+    for known_id in known_ids:
+        match = re.search(r":(\d+)$", known_id)
+        if not match:
+            continue
+        seconds = match.group(1)
+        suffix_counts[seconds] = suffix_counts.get(seconds, 0) + 1
+
     out: list[str] = []
     seen: set[str] = set()
     for raw in combined:
@@ -143,13 +151,31 @@ def _merge_cite_utterance_ids(
 
         resolved_uid = uid
         if known_lookup:
+            matched = None
             for key in _citation_lookup_keys(uid):
                 if key in known_lookup:
-                    resolved_uid = known_lookup[key]
+                    matched = known_lookup[key]
                     break
-            else:
+
+            if matched is None:
+                sec_match = re.match(r"^(?:utt_)?(\d+)$", uid, re.IGNORECASE)
+                if sec_match:
+                    seconds = sec_match.group(1)
+                    if suffix_counts.get(seconds) == 1:
+                        matched = next(
+                            (
+                                known_id
+                                for known_id in known_ids
+                                if known_id.endswith(f":{seconds}")
+                            ),
+                            None,
+                        )
+
+            if matched is None:
                 if not _looks_like_utterance_id(uid):
                     continue
+            else:
+                resolved_uid = matched
 
         if resolved_uid in seen:
             continue

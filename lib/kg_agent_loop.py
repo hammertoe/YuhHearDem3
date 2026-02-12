@@ -369,6 +369,7 @@ def _infer_citation_ids_from_src_links(answer: str, retrieval: dict[str, Any] | 
         return []
 
     known_lookup: dict[str, str] = {}
+    known_ids: list[str] = []
     if isinstance(retrieval, dict):
         for citation in retrieval.get("citations") or []:
             if not isinstance(citation, dict):
@@ -376,8 +377,17 @@ def _infer_citation_ids_from_src_links(answer: str, retrieval: dict[str, Any] | 
             known_id = str(citation.get("utterance_id") or "").strip()
             if not known_id:
                 continue
+            known_ids.append(known_id)
             for key in _citation_lookup_keys(known_id):
                 known_lookup[key] = known_id
+
+    suffix_counts: dict[str, int] = {}
+    for known_id in known_ids:
+        match = re.search(r":(\d+)$", known_id)
+        if not match:
+            continue
+        seconds = match.group(1)
+        suffix_counts[seconds] = suffix_counts.get(seconds, 0) + 1
 
     out: list[str] = []
     seen: set[str] = set()
@@ -393,6 +403,19 @@ def _infer_citation_ids_from_src_links(answer: str, retrieval: dict[str, Any] | 
                 if key in known_lookup:
                     matched = known_lookup[key]
                     break
+            if matched is None:
+                sec_match = re.match(r"^(?:utt_)?(\d+)$", normalized, re.IGNORECASE)
+                if sec_match:
+                    seconds = sec_match.group(1)
+                    if suffix_counts.get(seconds) == 1:
+                        matched = next(
+                            (
+                                known_id
+                                for known_id in known_ids
+                                if known_id.endswith(f":{seconds}")
+                            ),
+                            None,
+                        )
             if matched is None:
                 continue
             resolved = matched
@@ -440,6 +463,14 @@ def _filter_to_known_citation_ids(
         for key in _citation_lookup_keys(known_id):
             known_lookup[key] = known_id
 
+    suffix_counts: dict[str, int] = {}
+    for known_id in known_ids:
+        match = re.search(r":(\d+)$", known_id)
+        if not match:
+            continue
+        seconds = match.group(1)
+        suffix_counts[seconds] = suffix_counts.get(seconds, 0) + 1
+
     out: list[str] = []
     seen: set[str] = set()
     for raw in cite_utterance_ids:
@@ -452,6 +483,16 @@ def _filter_to_known_citation_ids(
             if key in known_lookup:
                 resolved = known_lookup[key]
                 break
+
+        if resolved is None:
+            sec_match = re.match(r"^(?:utt_)?(\d+)$", uid, re.IGNORECASE)
+            if sec_match:
+                seconds = sec_match.group(1)
+                if suffix_counts.get(seconds) == 1:
+                    resolved = next(
+                        (known_id for known_id in known_ids if known_id.endswith(f":{seconds}")),
+                        None,
+                    )
 
         if not resolved or resolved in seen:
             continue

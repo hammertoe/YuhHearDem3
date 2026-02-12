@@ -297,6 +297,27 @@ function MarkdownMessage({
         setIfMissing(`utt_${normalized.toLowerCase()}`, n);
       }
     });
+
+    // Handle model outputs like #src:utt_10848 by mapping unique :seconds suffixes.
+    const suffixCounts = new Map<string, number>();
+    linkIds.forEach((id) => {
+      const normalized = normalizeUtteranceId((id || '').trim());
+      const match = normalized.match(/:(\d+)$/);
+      if (!match) return;
+      const seconds = match[1];
+      suffixCounts.set(seconds, (suffixCounts.get(seconds) || 0) + 1);
+    });
+    linkIds.forEach((id, i) => {
+      const normalized = normalizeUtteranceId((id || '').trim());
+      const match = normalized.match(/:(\d+)$/);
+      if (!match) return;
+      const seconds = match[1];
+      if ((suffixCounts.get(seconds) || 0) !== 1) return;
+      const n = i + 1;
+      setIfMissing(seconds, n);
+      setIfMissing(`utt_${seconds}`, n);
+    });
+
     return m;
   }, [linkIds]);
 
@@ -314,9 +335,19 @@ function MarkdownMessage({
 
   const onJumpToSource = (utteranceId: string) => {
     const normalized = normalizeUtteranceId(utteranceId);
-    const el =
+    let el =
       document.getElementById(`src-${messageId}-${normalized}`) ||
       document.getElementById(`src-${messageId}-${utteranceId}`);
+
+    if (!el) {
+      const secondsMatch = normalized.match(/^(?:utt_)?(\d+)$/i);
+      if (secondsMatch) {
+        const seconds = secondsMatch[1];
+        const candidates = document.querySelectorAll<HTMLElement>(`[id^="src-${messageId}-"]`);
+        el = Array.from(candidates).find((node) => node.id.endsWith(`:${seconds}`)) || null;
+      }
+    }
+
     if (el) {
       history.replaceState(null, '', `#${el.id}`);
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });

@@ -453,6 +453,21 @@ def test_filter_to_known_citation_ids_matches_utt_prefix_variants() -> None:
     assert filtered == ["TNXMUaNl5wg:687", "AqlXNpcikR4:2161"]
 
 
+def test_filter_to_known_citation_ids_resolves_utt_seconds_to_unique_known_id() -> None:
+    from lib.kg_agent_loop import _filter_to_known_citation_ids
+
+    retrieval = {
+        "citations": [
+            {"utterance_id": "AEOFDga2dh8:10848"},
+            {"utterance_id": "XNZ9FA2lHac:2566"},
+        ]
+    }
+
+    filtered = _filter_to_known_citation_ids(["utt_10848"], retrieval)
+
+    assert filtered == ["AEOFDga2dh8:10848"]
+
+
 def test_infer_citation_ids_from_src_links_parses_grouped_or_malformed_text() -> None:
     from lib.kg_agent_loop import _infer_citation_ids_from_src_links
 
@@ -488,3 +503,19 @@ def test_infer_citation_ids_from_src_links_strips_trailing_brackets() -> None:
     inferred = _infer_citation_ids_from_src_links(answer, retrieval)
 
     assert inferred == ["FyrySNA48FM:4013"]
+
+
+def test_infer_citation_ids_from_src_links_resolves_utt_seconds_to_unique_known_id() -> None:
+    from lib.kg_agent_loop import _infer_citation_ids_from_src_links
+
+    retrieval = {
+        "citations": [
+            {"utterance_id": "AEOFDga2dh8:10848"},
+            {"utterance_id": "XNZ9FA2lHac:2566"},
+        ]
+    }
+
+    answer = "Education Bill [cite](#src:utt_10848)."
+    inferred = _infer_citation_ids_from_src_links(answer, retrieval)
+
+    assert inferred == ["AEOFDga2dh8:10848"]
