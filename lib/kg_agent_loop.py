@@ -269,7 +269,30 @@ def _clean_answer_text(text: str | None) -> str:
     raw = _LEADING_INTERJECTION_RE.sub("", raw).lstrip()
     raw = _KEY_CONNECTIONS_BLOCK_RE.sub("", raw).strip()
     raw = _promote_section_headings(raw)
+    raw = _strip_embedded_followup_questions(raw)
     return raw
+
+
+def _strip_embedded_followup_questions(text: str) -> str:
+    lines = text.splitlines()
+    marker_idx = -1
+    for i, line in enumerate(lines):
+        if re.search(r"follow\s*-?\s*up\s+questions", line, re.IGNORECASE):
+            marker_idx = i
+            break
+
+    if marker_idx < 0:
+        return text
+
+    tail_lines = [ln.strip() for ln in lines[marker_idx + 1 :] if ln.strip()]
+    questionish = sum(1 for ln in tail_lines if ln.endswith("?"))
+
+    # Only strip when this clearly looks like a generated follow-up section.
+    if questionish < 2:
+        return text
+
+    trimmed = "\n".join(lines[:marker_idx]).rstrip()
+    return trimmed
 
 
 def _filter_to_known_citation_ids(

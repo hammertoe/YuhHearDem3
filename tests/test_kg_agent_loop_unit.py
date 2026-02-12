@@ -334,3 +334,42 @@ def test_agent_loop_limits_followup_questions_to_four() -> None:
 
     result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
     assert result["followup_questions"] == ["Q1", "Q2", "Q3", "Q4"]
+
+
+def test_agent_loop_strips_embedded_followup_questions_from_answer() -> None:
+    from lib.kg_agent_loop import KGAgentLoop
+
+    answer = (
+        "Water policy was debated [1](#src:utt_1).\n\n"
+        "Here are some follow-up questions you might have:\n\n"
+        "What specific measures were proposed?\n"
+        "Who opposed the proposal?\n"
+        "What timeline was discussed?"
+    )
+    responses = [
+        _FakeResponse(
+            text=json.dumps(
+                {
+                    "answer": answer,
+                    "cite_utterance_ids": ["utt_1"],
+                    "focus_node_ids": [],
+                    "followup_questions": [
+                        "What specific measures were proposed?",
+                        "Who opposed the proposal?",
+                        "What timeline was discussed?",
+                    ],
+                }
+            ),
+            function_calls=None,
+        )
+    ]
+    client = _FakeGeminiClient(responses)
+    loop = KGAgentLoop(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        client=client,
+    )
+
+    result = asyncio.run(loop.run(user_message="Tell me about water", history=[]))
+    assert "follow-up questions" not in result["answer"].lower()
+    assert result["answer"] == "Water policy was debated [1](#src:utt_1)."
