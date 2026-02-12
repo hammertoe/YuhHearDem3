@@ -466,16 +466,16 @@ class KGAgentLoop:
     async def _call_llm(self, contents: list[types.Content], is_tool_call: bool) -> Any:
         config_params: dict[str, Any] = {
             "system_instruction": self._system_prompt(),
-            "tools": self._tool_declarations(),
             "temperature": 0.2,
             "max_output_tokens": 2048,
         }
-        if not is_tool_call:
-            # Gemini function-calling requests reject response_mime_type=response_schema
-            # when tools are present. Keep tools enabled for follow-up tool calls and
-            # rely on prompt + best-effort JSON parsing for structured final output.
-            config_params.pop("response_schema", None)
-            config_params.pop("response_mime_type", None)
+        if is_tool_call:
+            config_params["tools"] = self._tool_declarations()
+        else:
+            # Final answer call should be structured JSON. Keep tools disabled here
+            # because Gemini rejects response_mime_type JSON when function calling is enabled.
+            config_params["response_schema"] = AGENT_RESPONSE_SCHEMA
+            config_params["response_mime_type"] = "application/json"
         if not self.enable_thinking:
             config_params["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         config = types.GenerateContentConfig(**config_params)

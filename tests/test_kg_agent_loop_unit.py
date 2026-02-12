@@ -161,7 +161,7 @@ def test_agent_loop_preserves_model_tool_call_content_when_continuing() -> None:
     assert model_tool_call_content in second_contents
 
 
-def test_agent_loop_does_not_set_json_response_mime_with_tools_enabled() -> None:
+def test_agent_loop_uses_json_schema_without_tools_for_final_answer() -> None:
     from lib.kg_agent_loop import KGAgentLoop
 
     tool_call = _FakeFunctionCall(
@@ -193,7 +193,9 @@ def test_agent_loop_does_not_set_json_response_mime_with_tools_enabled() -> None
     asyncio.run(loop.run(user_message="Tell me about water", history=[]))
 
     second_config = client.aio.models.calls[1]["config"]
-    assert getattr(second_config, "response_mime_type", None) in (None, "")
+    assert getattr(second_config, "response_mime_type", None) == "application/json"
+    assert getattr(second_config, "response_schema", None) is not None
+    assert not getattr(second_config, "tools", None)
 
 
 def test_agent_loop_strips_wuhloss_leading_interjection() -> None:
