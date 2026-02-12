@@ -2,33 +2,27 @@
 
 ## Project Overview
 
-YuhHearDem3 is a parliamentary transcription and search system that processes video recordings of parliamentary sessions, extracts transcripts with speaker identification, builds knowledge graphs, and provides advanced search capabilities.
+YuhHearDem3 is a parliamentary transcription and knowledge graph system that processes video recordings of parliament sessions, extracts structured information, and enables conversational search over debates.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            YuhHearDem3 System                               │
+│                           YuhHearDem3 System                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐ │
-│  │   Video Input   │───▶│  Transcription  │───▶│  Three-Tier Processing  │ │
-│  │  (YouTube/GCS)  │    │  (Gemini API)   │    │   (Paragraphs/Sentences)│ │
-│  └─────────────────┘    └─────────────────┘    └─────────────────────────┘ │
-│           │                      │                       │                  │
-│           ▼                      ▼                       ▼                  │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐ │
-│  │ Bill Scraping   │    │ Knowledge Graph │    │    Vector/Graph DB      │ │
-│  │ (parliament.gov)│───▶│    Builder      │───▶│  (Postgres/Memgraph)    │ │
-│  └─────────────────┘    └─────────────────┘    └─────────────────────────┘ │
-│                                                     │                       │
-│                                                     ▼                       │
-│                                           ┌─────────────────────────┐      │
-│                                           │   Search API (FastAPI)  │      │
-│                                           │  - Hybrid Search        │      │
-│                                           │  - Temporal Search      │      │
-│                                           │  - Graph Traversal      │      │
-│                                           └─────────────────────────┘      │
+│                                                                              │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐  │
+│  │   Video Input   │───▶│  Transcription  │───▶│  Three-Tier Storage    │  │
+│  │  (YouTube/GCS)  │    │  (Gemini 2.5)   │    │  (PostgreSQL + pgvector)│ │
+│  └─────────────────┘    └─────────────────┘    └─────────────────────────┘  │
+│           │                      │                        │                   │
+│           ▼                      ▼                        ▼                   │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐  │
+│  │ Order Papers    │    │ Knowledge Graph │    │     Search API         │  │
+│  │ (PDF Parsing)   │───▶│    Extraction   │───▶│  - Hybrid Search       │  │
+│  └─────────────────┘    └─────────────────┘    │  - Conversational AI   │  │
+│                                                  │  - Graph Traversal     │  │
+│                                                  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -38,81 +32,114 @@ YuhHearDem3 is a parliamentary transcription and search system that processes vi
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `transcribe.py` | ~950 | Main video transcription script - processes videos in segments |
-| `scripts/kg_extract_from_video.py` | ~200 | Extracts knowledge graphs from transcripts using Gemini LLM |
-| `api/search_api.py` | 580 | FastAPI REST API for hybrid search |
+| `transcribe.py` | ~650 | Main video transcription script |
+| `api/search_api.py` | ~400 | FastAPI application with chat and search endpoints |
 
 ### Library Modules
 
-#### Database Layer (`lib/db/`)
+#### Core Agents (`lib/`)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `postgres_client.py` | 83 | PostgreSQL connection pool with pgvector support |
-| `memgraph_client.py` | 153 | Memgraph graph database client |
+| `chat_agent_v2.py` | 551 | Conversational AI agent with thread management |
+| `kg_agent_loop.py` | 699 | KG-powered agent loop with tool calling |
+| `kg_hybrid_graph_rag.py` | ~400 | Hybrid Graph-RAG retrieval |
+| `advanced_search_features.py` | ~450 | Temporal search, trends, graph queries |
 
-#### Processing Layer (`lib/processors/`)
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `three_tier_transcription.py` | 213 | Groups transcripts into paragraphs/sentences |
-| `paragraph_splitter.py` | 111 | Groups sentences by speaker into paragraphs |
-| `bill_entity_extractor.py` | 222 | Extracts entities from bill text using regex patterns |
-
-#### Scraping Layer (`lib/scraping/`)
+#### Knowledge Graph (`lib/knowledge_graph/`)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `bill_scraper.py` | 305 | Scrapes bills from parliament website |
+| `oss_two_pass.py` | 677 | OSS two-pass entity extraction |
+| `window_builder.py` | 287 | Window-based processing for transcripts |
+| `kg_store.py` | ~350 | KG storage operations |
+| `kg_extractor.py` | ~550 | Main KG extraction logic |
+| `base_kg_seeder.py` | ~300 | Base KG seeding |
+| `model_compare.py` | ~300 | Model comparison utilities |
+
+#### Order Papers (`lib/order_papers/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `pdf_parser.py` | 192 | PDF order paper parsing |
+| `video_matcher.py` | 344 | Match papers to YouTube videos |
+| `ingestor.py` | 95 | Order paper ingestion |
+| `parser.py` | 129 | Order paper parsing |
+| `models.py` | 34 | Order paper models |
+| `role_extract.py` | 27 | Speaker role extraction |
+
+#### Transcripts (`lib/transcripts/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `ingestor.py` | 433 | Transcript ingestion |
+
+#### Database (`lib/db/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `postgres_client.py` | ~100 | PostgreSQL connection pool |
+| `chat_schema.py` | ~150 | Chat schema management |
+
+#### Processors (`lib/processors/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `three_tier_transcription.py` | 147 | Three-tier transcript processing |
+| `paragraph_splitter.py` | 115 | Paragraph grouping |
+| `bill_entity_extractor.py` | 341 | Bill entity extraction |
+| `bill_ingestor.py` | 184 | Bill ingestion |
+
+#### Scraping (`lib/scraping/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `bill_scraper.py` | 305 | Bill scraping from parliament website |
 
 #### Utilities (`lib/utils/`)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `config.py` | 69 | Environment-based configuration management |
-
-#### Embeddings (`lib/embeddings/`)
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `google_client.py` | 76 | Google Gemini embedding client with retry logic |
-
-#### ID Generation & Search (`lib/`)
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `id_generators.py` | 84 | ID generators for paragraphs, sentences, speakers, bills |
-| `advanced_search_features.py` | 371 | Temporal search, trend analysis, multi-hop queries |
+| `config.py` | 85 | Configuration management |
+| `roles.py` | ~50 | Role utilities |
+| `id_generators.py` | ~100 | ID generation utilities |
 
 ### Scripts (`scripts/`)
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `ingest_bills.py` | 254 | Ingests scraped bills into database |
-| `migrate_transcripts.py` | ? | Migration utilities (empty in current view) |
-| `cron_transcription.py` | ? | Cron job for automated transcription |
-
-### Configuration & Schema
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `docker-compose.yml` | 41 | PostgreSQL + pgvector + Memgraph services |
-| `schema/init.sql` | 335 | Three-tier database schema with indexes |
-| `requirements.txt` | 41 | Python dependencies |
+| File | Purpose |
+|------|---------|
+| `kg_extract_from_video.py` | Extract KG from video |
+| `cron_transcription.py` | Automated transcription jobs |
+| `migrate_chat_schema.py` | Chat schema migration |
+| `clear_kg.py` | Clear KG tables |
+| `ingest_order_paper_pdf.py` | Ingest order paper PDFs |
+| `ingest_knowledge_graph.py` | Ingest KG data |
+| `list_channel_videos.py` | List channel videos |
+| `match_order_papers_to_videos.py` | Match papers to videos |
+| `backfill_speaker_video_roles.py` | Backfill speaker roles |
+| `compare_kg_models.py` | Compare KG models |
+| `migrate_transcripts.py` | Migrate transcripts |
+| `export_order_paper.py` | Export order papers |
+| `deploy.sh` | Deployment script |
+| `kg_export_html.py` | Export KG to HTML |
+| `kg_sync_memgraph.py` | Sync with Memgraph |
+| `kg_seed_base.py` | Seed base KG |
 
 ### Tests (`tests/`)
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `test_advanced_search.py` | ? | Advanced search feature tests |
-| `test_database.py` | ? | Database client tests |
-| `test_paragraph_splitter.py` | ? | Paragraph splitting tests |
-| `test_id_generators.py` | ? | ID generator tests |
-| `test_three_tier_transcription.py` | ? | Three-tier processing tests |
-| `test_bill_scraping.py` | ? | Bill scraper tests |
-| `test_bill_ingestion.py` | ? | Bill ingestion tests |
+| File | Purpose |
+|------|---------|
+| `test_chat_agent_v2_unit.py` | Chat agent tests |
+| `test_kg_agent_loop_unit.py` | KG agent loop tests |
+| `test_kg_hybrid_graph_rag_unit.py` | Graph-RAG tests |
+| `test_oss_two_pass.py` | OSS two-pass tests |
+| `test_window_builder.py` | Window builder tests |
+| `test_trace_helpers_unit.py` | Trace helper tests |
+| `test_order_paper_*.py` | Order paper tests |
+| `test_bill_*.py` | Bill tests |
+| `test_database.py` | Database tests |
 
-## Module Dependency Graph
+## Module Dependencies
 
 ```
 transcribe.py
@@ -121,212 +148,128 @@ transcribe.py
 ├── rapidfuzz (fuzzy matching)
 ├── pydantic (data validation)
 ├── tenacity (retry logic)
-└── dotenv (environment)
-
-build_knowledge_graph.py
-├── networkx (graph operations)
-├── pyvis (visualization)
-├── google.genai (Gemini for relations)
-├── tenacity (retry logic)
-└── dateparser (date normalization)
+└── lib/order_papers (order paper context)
 
 api/search_api.py
 ├── fastapi (web framework)
-├── numpy (scoring)
-├── lib.db.postgres_client
-├── lib.db.memgraph_client
-├── lib.embeddings.google_client
-├── lib.advanced_search_features
+├── lib.chat_agent_v2
+├── lib.kg_agent_loop
+├── lib.kg_hybrid_graph_rag
+└── lib.db.postgres_client
+
+lib/chat_agent_v2.py
+├── lib.db.chat_schema
+├── lib.kg_agent_loop
 └── lib.utils.config
 
-lib/db/postgres_client.py
-├── psycopg
-├── psycopg_pool
-└── lib.utils.config
-
-lib/db/memgraph_client.py
-├── mgclient
-└── lib.utils.config
-
-lib/processors/three_tier_transcription.py
-├── lib.processors.paragraph_splitter
-└── lib.id_generators
-
-lib/processors/paragraph_splitter.py
-└── lib.id_generators
-
-lib/scraping/bill_scraper.py
-├── requests
-├── beautifulsoup4
-├── tenacity
-└── lib.utils.config
-
-lib/embeddings/google_client.py
+lib/kg_agent_loop.py
+├── lib.kg_hybrid_graph_rag
 ├── google.genai
-├── tenacity
 └── lib.utils.config
 
-lib/advanced_search_features.py
+lib/knowledge_graph/*.py
+├── google.genai (LLM extraction)
 ├── lib.db.postgres_client
-├── lib.db.memgraph_client
-└── lib.embeddings.google_client
+└── tenacity (retry logic)
+
+lib/order_papers/*.py
+├── lib.db.postgres_client
+└── pdf parsing libraries
+```
+
+## Key Design Patterns
+
+### 1. Canonical ID Generation
+```python
+# Hash-based stable IDs for consistency
+kg_<hash(type:label)>[:12]  # Node IDs
+kge_<hash(source|predicate|target|video|seconds|evidence)>[:12]  # Edge IDs
+```
+
+### 2. Window-Based Processing
+```python
+# Configurable window size and stride
+window_size = 10  # utterances per window
+stride = 6  # utterances between windows
+# 40% overlap for continuity
+```
+
+### 3. Thread-Based Chat
+```python
+# Persistent conversation threads
+chat_threads (table)
+├── id: UUID
+├── title: str
+├── created_at: timestamp
+└── updated_at: timestamp
+
+chat_messages (table)
+├── id: UUID
+├── thread_id: FK
+├── role: 'user' | 'assistant'
+├── content: text
+└── created_at: timestamp
+```
+
+### 4. Citation Tracking
+```python
+# Every answer grounded in evidence
+answer → cite_utterance_ids → transcript sentences
 ```
 
 ## Code Review Findings
 
 ### Strengths
 
-1. **Good Architecture**: Clear separation between transcription, processing, storage, and search layers
-2. **Modern Python**: Uses type hints, dataclasses, pydantic models consistently
-3. **Error Handling**: Tenacity decorators for retry logic throughout
-4. **Database Design**: Well-designed three-tier schema with appropriate indexes
-5. **Configuration Management**: Centralized config using dataclasses and environment variables
-6. **Modularity**: Good separation of concerns with processors, db clients, and scrapers
+1. **Clear Architecture**: Separation between transcription, KG extraction, and chat
+2. **Modern Python**: Type hints, dataclasses, pydantic models
+3. **Error Handling**: Tenacity decorators for retry logic
+4. **Database Design**: Well-designed schema with proper indexes
+5. **Citation Tracking**: Full provenance for answers
+6. **Testing**: Comprehensive unit tests for core functionality
 
-### Issues Found
+### Areas for Improvement
 
-#### 1. Type Inconsistencies (Partially Fixed)
-- **Location**: `lib/advanced_search_features.py:5` - Uses legacy `Any` type
-- **Location**: `lib/scraping/bill_scraper.py:6` - Uses legacy type imports
-- **Status**: Fixed in `scripts/migrate_transcripts.py` and `lib/utils/config.py`
-- **Impact**: Low - still works but inconsistent with project style
-- **Fix**: Use `dict, list, | None` syntax per AGENTS.md guidelines
+1. **Large Functions**: Some functions exceed 100 lines
+2. **Type Coverage**: Not all functions have type annotations
+3. **Documentation**: Some modules lack docstrings
+4. **Error Messages**: Could be more descriptive
 
-#### 2. Mutable Default Arguments
-- **Location**: `build_knowledge_graph.py:25-33` - Entity dataclass has mutable defaults
-- **Note**: File may have been refactored to `scripts/kg_extract_from_video.py`
-- **Impact**: Medium - could cause unexpected behavior if instances share state
-- **Fix**: Use `field(default_factory=list)` from dataclasses
+## Recent Changes
 
-#### 3. Inconsistent Error Handling
-- **Location**: `transcribe.py` - Mix of try/except and tenacity retry in some areas
-- **Impact**: Medium - could cause double retry or unexpected behavior
-- **Fix**: Consolidate retry logic
+1. **Chat Agent V2**: Complete rewrite with thread-based conversations
+2. **KG Extraction**: Added OSS two-pass extraction for improved accuracy
+3. **Order Papers**: New PDF parsing and video matching
+4. **Tracing**: Comprehensive debug tracing with `CHAT_TRACE`
+5. **Follow-Up Questions**: LLM-generated contextual follow-ups
 
-#### 7. Hardcoded Values
-- **Location**: `api/search_api.py:442-444` - Hardcoded YouTube video ID
-- **Location**: `lib/advanced_search_features.py:100-103` - SQL injection risk in entity_id handling
-- **Impact**: Medium - security and maintainability concern
-- **Fix**: Use parameterized queries properly
+## File Organization
 
-#### 8. SQL Injection Risk
-- **Location**: `lib/advanced_search_features.py:111-113`
-- **Issue**: Direct string interpolation into SQL
-- **Impact**: High - security vulnerability
-- **Fix**: Use parameterized queries
+```
+YuhHearDem3/
+├── api/                    # FastAPI endpoints
+├── lib/
+│   ├── chat_agent_v2.py   # Chat agent
+│   ├── kg_*.py           # Knowledge graph
+│   ├── order_papers/      # Order paper processing
+│   ├── transcripts/       # Transcript processing
+│   ├── db/                # Database clients
+│   ├── processors/        # Data processors
+│   ├── scraping/          # Web scrapers
+│   └── utils/             # Utilities
+├── scripts/               # CLI scripts
+├── tests/                 # Unit tests
+├── docs/                  # Documentation
+└── schema/                # Database schema
+```
 
-#### 9. Resource Management
-- **Location**: `build_knowledge_graph.py` - Uses LLM for entity extraction
-- **Impact**: Medium - slower initialization due to LLM calls
-- **Fix**: Cache LLM responses where possible
+## Summary
 
-#### 10. Documentation Gaps
-- **Location**: Many functions lack docstrings
-- **Location**: Module-level documentation missing in several files
-- **Impact**: Medium - harder to maintain
-- **Fix**: Add docstrings per Google style
+The codebase is well-organized with clear separation of concerns. Core functionality includes:
 
-#### 11. Test Coverage Unknown
-- **Issue**: Tests exist but coverage not verified
-- **Impact**: Unknown - could have untested code paths
-- **Fix**: Run tests and generate coverage report
+- **Transcription**: Iterative video processing with speaker diarization
+- **Knowledge Graph**: LLM-first extraction with canonical IDs
+- **Conversational Search**: Thread-based chat with grounded answers
+- **Order Papers**: PDF parsing and video matching
 
-#### 12. Environment Variable Validation
-- **Location**: `lib/utils/config.py`
-- **Issue**: No validation that required env vars are set
-- **Impact**: Medium - runtime errors if misconfigured
-- **Fix**: Add validation with clear error messages
-
-#### 13. Import Organization
-- **Location**: Several files don't follow AGENTS.md import order
-- **Impact**: Low - consistency issue
-- **Fix**: Reorganize imports (standard lib → third-party → local)
-
-#### 14. Missing __init__.py Documentation
-- **Location**: `lib/db/__init__.py`, `lib/processors/__init__.py`
-- **Issue**: Empty init files
-- **Impact**: Low - could add module-level docs
-- **Fix**: Add docstrings or exports
-
-#### 15. Configuration Validation
-- **Location**: `lib/utils/config.py`
-- **Issue**: No validation of database connection parameters
-- **Impact**: Medium - connection failures at runtime
-- **Fix**: Add connection validation or health check
-
-### Security Issues
-
-1. **SQL Injection** in `lib/advanced_search_features.py:111` - entity_id directly interpolated
-2. **No Input Sanitization** in API endpoints - should validate query parameters
-3. **Hardcoded Credentials** in some docs (need to verify not in code)
-4. **No Rate Limiting** on API endpoints
-
-### Performance Issues
-
-1. **N+1 Query Problem** in `api/search_api.py:184-206` - graph_expand_entities queries in loop
-2. **SpaCy Model Loading** - loaded multiple times, should be singleton
-3. **Embedding Generation** - no batching in some paths
-4. **Memory Usage** - loads entire transcript into memory
-
-### Maintainability Issues
-
-1. **Large Functions**: `process_video_iteratively` (200+ lines), `search` endpoint (100+ lines)
-2. **Magic Numbers**: Many hardcoded values without constants
-3. **Inconsistent Naming**: `speaker_id` vs `id` in different contexts
-4. **Missing Abstractions**: Database queries inline in API handlers
-
-## Recommendations
-
-### High Priority
-1. Fix SQL injection vulnerability
-2. Add input validation to API endpoints
-3. Fix mutable default arguments
-4. Add proper error handling for database connections
-
-### Medium Priority
-1. Refactor large functions into smaller units
-2. Add comprehensive docstrings
-3. Implement proper logging (remove print statements)
-4. Add database connection pooling configuration
-5. Cache LLM model responses
-
-### Low Priority
-1. Standardize on modern Python type hints
-2. Add type hints to all functions
-3. Remove unused variables
-4. Consolidate duplicate constants
-5. Add module-level documentation
-
-## Testing Status
-
-- Test files exist for major components
-- No test runner configuration visible
-- No coverage reports generated
-- Recommendation: Add pytest configuration and coverage reporting
-
-## Code Quality Metrics
-
-| Metric | Value |
-|--------|-------|
-| Total Python LOC | ~5,000+ |
-| Number of modules | 40+ |
-| Test files | 30+ |
-| Documentation files | 9 (in docs/) |
-| Average function length | ~25 lines |
-| Type hint coverage | ~85% |
-
-## Recent Improvements
-
-1. **Dead Code Removal**: Removed ~100 lines of unused environment check functions from `transcribe.py`
-2. **Type Hint Modernization**: Updated `scripts/migrate_transcripts.py` and `lib/utils/config.py` to use modern Python 3.10+ syntax (`list`, `dict`, `| None`)
-3. **Code Cleanup**: Removed unused `VideoTranscription`, `Speaker` classes and legacy `get_video_transcription()` function
-
-## Conclusion
-
-The codebase is well-architected with good separation of concerns. The main issues are:
-1. Security vulnerabilities (SQL injection) - requires attention
-2. Some legacy type imports remain in a few files
-3. Missing comprehensive error handling in some areas
-4. Performance optimizations needed for production scale
-
-Overall quality: **Good** (7.5/10) - Solid foundation with improving code quality and maintainability.
+Overall quality: **Good** - Solid architecture with comprehensive testing.

@@ -8,19 +8,21 @@ The `docs/` directory contains comprehensive project documentation:
 
 | Document | Purpose | Lines |
 |----------|---------|-------|
-| [README.md](docs/README.md) | Main project documentation - transcription, knowledge graphs, usage | 425 |
-| [COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md) | Comprehensive 5-phase implementation guide with architecture | 1121 |
-| [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | Quick reference card for commands and API endpoints | 376 |
+| [README.md](docs/README.md) | Main project documentation - transcription, knowledge graphs, chat | 425+ |
+| [COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md) | Comprehensive 5-phase implementation guide with architecture | 1121+ |
+| [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | Quick reference card for commands and API endpoints | 376+ |
 | [README_SEARCH_SYSTEM.md](docs/README_SEARCH_SYSTEM.md) | System architecture and database queries | 328 |
 | [CODE_MAP_AND_REVIEW.md](docs/CODE_MAP_AND_REVIEW.md) | Complete code map, architecture diagram, and code review | ~400 |
 | [DATE_NORMALIZATION.md](docs/DATE_NORMALIZATION.md) | Technical documentation for date normalization | 136 |
 | [KG_SUMMARY.md](docs/KG_SUMMARY.md) | Knowledge graph statistics and sample data | 71 |
+| [CHAT_TRACE.md](docs/CHAT_TRACE.md) | Chat trace logging documentation | 456 |
 
 **Quick Links:**
-- Start here: [README.md](docs/README.md) for transcription and knowledge graphs
+- Start here: [README.md](docs/README.md) for transcription, KG extraction, and chat
 - For development: [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) for commands
 - For architecture: [COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md) for full system overview
 - For code understanding: [CODE_MAP_AND_REVIEW.md](docs/CODE_MAP_AND_REVIEW.md)
+- For tracing: [CHAT_TRACE.md](docs/CHAT_TRACE.md) for debug output format
 
 ## Build, Lint, and Type Check Commands
 
@@ -33,7 +35,7 @@ ruff check .
 ruff check . --fix
 
 # Check specific file
-ruff check transcribe.py
+ruff check lib/chat_agent_v2.py
 
 # Show detailed output with line numbers
 ruff check . --output-format=full
@@ -41,26 +43,43 @@ ruff check . --output-format=full
 
 ### Type Checking (mypy)
 ```bash
-# Run type checker
-mypy *.py
+# Run type checker on lib modules
+mypy lib/
 
 # Check specific file
-mypy transcribe.py
+mypy lib/kg_agent_loop.py
 
 # More verbose output
-mypy *.py --show-error-codes
+mypy lib/ --show-error-codes
 ```
 
 ### Running Scripts
+
+**Transcribe video (main script):**
 ```bash
-# Transcribe video (main script)
 python transcribe.py --order-file order.txt --segment-minutes 30 --start-minutes 0
+```
 
-# Build knowledge graph
-python build_knowledge_graph.py --input-file transcription_output.json --output-json knowledge_graph.json --output-html knowledge_graph.html --batch-size 10
+**Extract knowledge graph from video:**
+```bash
+python scripts/kg_extract_from_video.py --youtube-video-id "VIDEO_ID" --window-size 10 --stride 6
+```
 
-# With custom output files
-python transcribe.py --order-file order.txt --output-file my_transcription.json
+**Chat API server:**
+```bash
+python -m uvicorn api.search_api:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Cron transcription:**
+```bash
+python scripts/cron_transcription.py --process
+python scripts/cron_transcription.py --list
+python scripts/cron_transcription.py --add "VIDEO_ID"
+```
+
+**Migrate chat schema:**
+```bash
+python scripts/migrate_chat_schema.py
 ```
 
 ### Testing
@@ -72,8 +91,8 @@ python -m pytest tests/ -v
 
 **Run specific test file:**
 ```bash
-python -m pytest tests/test_database.py -v
-python -m pytest tests/test_advanced_search.py -v
+python -m pytest tests/test_chat_agent_v2_unit.py -v
+python -m pytest tests/test_kg_agent_loop_unit.py -v
 ```
 
 **Quick manual testing:**
@@ -94,6 +113,7 @@ Example:
 import argparse
 import json
 from datetime import datetime
+from typing import Any
 
 import pydantic
 import tenacity
@@ -225,15 +245,28 @@ match err.code:
 - **Speaker IDs**: Format `s_<name>_<number>` (normalized, lowercase, underscore-separated)
 - **Legislation IDs**: Format `L_BILLNUMBER_<number>`
 
-### Knowledge Graph (kg_extractor.py)
+### Knowledge Graph (lib/knowledge_graph/)
 - **LLM-first approach**: Single pass extraction using Gemini, no NER pre-filtering
 - **Window-based extraction**: Concept windows (10 utterances, stride 6) with 40% overlap
+- **OSS two-pass extraction**: `oss_two_pass.py` for improved entity/relation extraction
 - **Node IDs**: Hash-based stable IDs: `kg_<hash(type:label)>[:12]`
 - **Edge IDs**: Hash-based: `kge_<hash(source|predicate|target|video|seconds|evidence)>[:12]`
 - **Predicates**: 15 predicates (11 conceptual + 4 discourse) extracted in single pass
 - **Timestamp accuracy**: Edges use timestamps from specific utterances referenced by each edge
 - **Vector context**: Top-K vector search provides relevant known nodes to LLM per window
 - **Node types**: `foaf:Person`, `schema:Legislation`, `schema:Organization`, `schema:Place`, `skos:Concept`
+
+### Chat Agent (lib/chat_agent_v2.py)
+- **KGChatAgentV2**: Main chat agent class
+- **Thread-based conversations**: Creates and manages chat threads in PostgreSQL
+- **KGAgentLoop**: Handles LLM tool calls for knowledge graph retrieval
+- **Hybrid Graph-RAG**: Uses `kg_hybrid_graph_rag` tool for subgraph retrieval
+- **Tracing**: `CHAT_TRACE=1` environment variable enables detailed debug output
+
+### Order Papers (lib/order_papers/)
+- **PDF parsing**: Extracts order paper content from parliamentary PDFs
+- **Video matching**: Matches order papers to YouTube videos
+- **Role extraction**: Extracts speaker roles from order papers
 
 ### Clear KG Tables (scripts/clear_kg.py)
 - Use `python scripts/clear_kg.py --yes` to clear all KG tables for fresh extraction
@@ -254,9 +287,29 @@ export GOOGLE_API_KEY="your-api-key"
 
 ## Key Dependencies
 - **google-genai**: Gemini API client
+- **fastapi**: Web framework for chat API
+- **uvicorn**: ASGI server
 - **pydantic**: Data validation
 - **tenacity**: Retry logic
 - **yt-dlp**: Video metadata
 - **rapidfuzz**: Fuzzy string matching
 - **psycopg**: PostgreSQL client
 - **pgvector**: Vector similarity search
+
+## Database Schema
+
+### Chat Schema Tables
+- `chat_threads`: Conversation threads
+- `chat_messages`: Individual messages with role and content
+- `chat_thread_state`: Persisted state for follow-up questions
+
+### KG Schema Tables
+- `kg_nodes`: Knowledge graph nodes with embeddings
+- `kg_aliases`: Normalized alias index
+- `kg_edges`: Knowledge graph edges with provenance
+
+### Transcript Schema Tables
+- `paragraphs`: Transcript paragraphs with embeddings
+- `sentences`: Individual sentences (no embeddings)
+- `speakers`: Speaker information
+- `speaker_video_roles`: Speaker roles in specific videos

@@ -1,70 +1,137 @@
 # Knowledge Graph Summary
 
-## Generated Files
+## Overview
 
-- **knowledge_graph.json** (170KB): Structured knowledge graph data
-- **knowledge_graph.html** (95KB): Interactive visualization
+The knowledge graph stores canonical entities and relationships extracted from parliamentary transcripts using LLM-first extraction with Gemini.
 
-## Statistics
+## Node Types
 
-### Overall
-- **Total Nodes**: 285
-- **Total Edges**: 262
+| Type | Namespace | Description |
+|------|-----------|-------------|
+| Person | `foaf:Person` | Individual MPs and speakers |
+| Organization | `schema:Organization` | Government bodies, committees |
+| Legislation | `schema:Legislation` | Bills, acts, resolutions |
+| Place | `schema:Place` | Geographic locations |
+| Concept | `skos:Concept` | Policies, topics, abstract concepts |
 
-### Entity Types Distribution
-| Type | Count |
-|------|-------|
-| DATE | 89 |
-| ORG | 53 |
-| CARDINAL | 37 |
-| TIME | 21 |
-| PERSON | 18 |
-| FAC | 13 |
-| GPE | 12 |
-| NORP | 5 |
-| MONEY | 12 |
-| ORDINAL | 3 |
-| LAW | 3 |
-| QUANTITY | 2 |
-| LOC | 3 |
-| EVENT | 1 |
-| PRODUCT | 2 |
-| WORK_OF_ART | 1 |
-| SPEAKER | 7 |
-| LEGISLATION | 3 |
+## Relationship Types
 
-### Relationship Types Distribution
-| Type | Count |
-|------|-------|
-| DISCUSSES | 199 |
-| PROPOSES | 16 |
-| MENTIONS | 12 |
-| REFERENCES | 13 |
-| WORKS_WITH | 10 |
-| CRITICIZES | 7 |
-| ADVOCATES_FOR | 3 |
-| QUESTIONS | 2 |
+### Conceptual (11 predicates)
+| Predicate | Description |
+|-----------|-------------|
+| `AMENDS` | Legislation amends another |
+| `GOVERNS` | Entity governs/regulates |
+| `MODERNIZES` | Updates a system/process |
+| `AIMS_TO_REDUCE` | Goal-oriented |
+| `REQUIRES_APPROVAL` | Needs approval |
+| `IMPLEMENTED_BY` | Implementation entity |
+| `RESPONSIBLE_FOR` | Responsibility |
+| `ASSOCIATED_WITH` | General association |
+| `CAUSES` | Causal relationship |
+| `ADDRESSES` | Addresses topic/problem |
+| `PROPOSES` | Proposes legislation/idea |
 
-## Key Insights
+### Discourse (4 predicates)
+| Predicate | Description |
+|-----------|-------------|
+| `RESPONDS_TO` | Speaker response |
+| `AGREES_WITH` | Agreement |
+| `DISAGREES_WITH` | Disagreement |
+| `QUESTIONS` | Question asked |
 
-1. **Most Common Relationships**: "DISCUSSES" dominates (199 edges), indicating active debate on topics
-2. **Legislation Focus**: "PROPOSES" (16 edges) shows active legislative proposals
-3. **Entity Diversity**: Strong representation of dates, organizations, and locations
-4. **Speaker Entities**: 7 unique speakers identified and added as nodes
-5. **Legislation References**: 3 legislation nodes automatically added
+## ID Generation
 
-## Sample Relationship Examples
+### Node IDs
+```
+kg_<hash(type:label)>[:12]
+```
+Example: `kg_abc123def456`
 
-- DISCUSSES: The House of Assembly First Session → 2026
-- DISCUSSES: this day → this new year
-- PROPOSES: Speaker → minutes
-- REFERENCES: Speaker → Road Traffic Act
+### Edge IDs
+```
+kge_<hash(source|predicate|target|video|seconds|evidence)>[:12]
+```
+Example: `kge_xyz789abc012`
 
-## Next Steps
+## Provenance
 
-1. Open `knowledge_graph.html` in browser to explore interactively
-2. Use `knowledge_graph.json` for:
-   - Graph database import (Neo4j, Memgraph)
-   - Analytics and insights
-   - ML pipeline integration
-3. Extend with custom relationship types if needed
+Each edge includes:
+- `youtube_video_id`: Source video
+- `earliest_timestamp_str`: When mentioned
+- `earliest_seconds`: Timestamp in seconds
+- `utterance_ids`: Transcript segments
+- `evidence`: Quote from transcript
+- `speaker_ids`: Speakers involved
+- `confidence`: Extraction confidence
+- `kg_run_id`: Extraction run identifier
+
+## Sample Data
+
+### Nodes
+```json
+{
+  "id": "kg_abc123def456",
+  "label": "Water Management",
+  "type": "skos:Concept",
+  "aliases": ["water policy", "water governance"],
+  "embedding": [...]
+}
+```
+
+### Edges
+```json
+{
+  "id": "kge_xyz789abc012",
+  "source_id": "kg_abc123def456",
+  "predicate": "PROPOSES",
+  "target_id": "kg_def789ghi012",
+  "youtube_video_id": "Syxyah7QIaM",
+  "earliest_timestamp_str": "00:36:00",
+  "earliest_seconds": 2160,
+  "utterance_ids": ["utt_123", "utt_456"],
+  "evidence": "The Minister proposed a new water management framework...",
+  "speaker_ids": ["s_hon_santia_bradshaw_1"],
+  "confidence": 0.95
+}
+```
+
+## Storage
+
+### Tables
+- `kg_nodes`: Canonical nodes with embeddings
+- `kg_aliases`: Normalized alias index for entity linking
+- `kg_edges`: Edges with full provenance
+
+### Indexes
+- `kg_nodes.label`: Fast lookup by label
+- `kg_nodes.type`: Filter by node type
+- `kg_aliases.alias_norm`: Fuzzy matching
+- `kg_edges.source_id` / `kg_edges.target_id`: Graph traversal
+- `kg_edges.youtube_video_id`: Filter by video
+
+## Extraction Process
+
+1. **Window Building**: Group utterances (default: 10, stride 6)
+2. **LLM Extraction**: Extract entities and relationships
+3. **Canonicalization**: Generate stable IDs
+4. **Vector Context**: Retrieve similar known nodes
+5. **Merging**: Combine with existing KG
+6. **Storage**: Persist to PostgreSQL
+
+## Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `window_size` | 10 | Utterances per window |
+| `stride` | 6 | Advance between windows |
+| `top_k` | 25 | Similar nodes for context |
+| `max_edges` | 60 | Max edges per extraction |
+
+## Performance
+
+| Metric | Typical Value |
+|--------|---------------|
+| Windows/hour | ~100 |
+| Nodes/window | 5-15 |
+| Edges/window | 10-30 |
+| Extraction latency | <2s/window |
