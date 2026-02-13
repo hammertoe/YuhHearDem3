@@ -1,0 +1,52 @@
+run-name: "Deploy: Staging - ${{ github.event.workflow_run.display_title }}"
+name: "Deploy: Staging"
+
+on:
+  workflow_run:
+    workflows: ["Build: Docker Image"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/hammertoe/yhd
+  STAGING_HOST: yhd-staging
+
+jobs:
+  deploy:
+    name: Deploy to staging
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: staging
+
+    steps:
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.STAGING_HOST }}
+          username: matt
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/yuhheardem3
+            git pull origin main || echo "Git pull failed, continuing with existing scripts..."
+            ./deploy.sh ${{ github.event.workflow_run.head_sha }}
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for deployment to be ready..."
+          sleep 15
+          # Will be added after nginx is configured
+          echo "Deployment initiated"
+
+      - name: Post deployment summary
+        if: always()
+        run: |
+          echo "## Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.event.workflow_run.head_sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
