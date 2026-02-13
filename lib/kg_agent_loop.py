@@ -541,6 +541,12 @@ class KGAgentLoop:
             "You MUST ground everything in retrieved evidence from knowledge graph and transcript utterances.\n\n"
             "Rules:\n"
             "- Before answering, call the tool `kg_hybrid_graph_rag` to retrieve a compact subgraph + citations.\n"
+            "- Construct the `query` parameter using CONCISE KEYWORDS separated by spaces, NOT natural language questions.\n"
+            "  Examples:\n"
+            '    ✅ "Barbados Water Authority BWA water scarcity drought infrastructure"\n'
+            '    ✅ "housing development christ church vesting resolution"\n'
+            '    ❌ "What did ministers say about water management?"\n'
+            "- Include key entity names and important concepts (3-10 terms max, keep under 15 words).\n"
             "- Use ONLY the tool results as your source of truth. Do not invent facts.\n"
             "- Interpret the tool results: use `edges` + `nodes` to explain relationships (who/what connects to what, agreements/disagreements, proposals, responsibilities) in plain language.\n"
             "- Prefer quoting MPs directly when citations are available; use markdown blockquotes and put the quoted sentence in *italics*.\n"
@@ -562,9 +568,10 @@ class KGAgentLoop:
             "properties": {
                 "query": {"type": "string"},
                 "hops": {"type": "integer", "default": 1},
-                "seed_k": {"type": "integer", "default": 8},
-                "max_edges": {"type": "integer", "default": 60},
+                "seed_k": {"type": "integer", "default": 12},
+                "max_edges": {"type": "integer", "default": 90},
                 "max_citations": {"type": "integer", "default": 12},
+                "edge_rank_threshold": {"type": "number"},
             },
             "required": ["query"],
         }
@@ -572,7 +579,8 @@ class KGAgentLoop:
             name="kg_hybrid_graph_rag",
             description=(
                 "Hybrid Graph-RAG: vector/fulltext seed search over kg_nodes, then expand kg_edges N hops "
-                "and return a compact subgraph plus provenance citations with youtube timecoded URLs."
+                "and return a compact subgraph plus provenance citations with youtube timecoded URLs. "
+                "Use edge_rank_threshold to filter low-quality edges (0.05 recommended after normalization)."
             ),
             parameters_json_schema=tool_schema,
         )
@@ -722,7 +730,7 @@ class KGAgentLoop:
                     _trace_print(
                         trace_id,
                         "Tool Call",
-                        f"kg_hybrid_graph_rag(query={_truncate_text(str(fc.args.get('query', '')), 100)}, hops={fc.args.get('hops', 1)}, seed_k={fc.args.get('seed_k', 8)})",
+                        f"kg_hybrid_graph_rag(query={_truncate_text(str(fc.args.get('query', '')), 100)}, hops={fc.args.get('hops', 1)}, seed_k={fc.args.get('seed_k', 12)}, threshold={fc.args.get('edge_rank_threshold')})",
                     )
                     tool_start = _start_timer()
                     tool_result = kg_hybrid_graph_rag(
@@ -730,9 +738,12 @@ class KGAgentLoop:
                         embedding_client=self.embedding_client,
                         query=str(fc.args.get("query", "")),
                         hops=int(fc.args.get("hops", 1)),
-                        seed_k=int(fc.args.get("seed_k", 8)),
-                        max_edges=int(fc.args.get("max_edges", 60)),
+                        seed_k=int(fc.args.get("seed_k", 12)),
+                        max_edges=int(fc.args.get("max_edges", 90)),
                         max_citations=int(fc.args.get("max_citations", 12)),
+                        edge_rank_threshold=float(fc.args.get("edge_rank_threshold"))
+                        if fc.args.get("edge_rank_threshold") is not None
+                        else None,
                     )
                     tool_duration = _end_timer(tool_start)
                     last_retrieval = tool_result

@@ -188,15 +188,15 @@ def _load_order_paper_speaker_index(
 
 
 def _dedupe_by_id(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[str] = set()
-    out: list[dict[str, Any]] = []
+    best_scores: dict[str, dict[str, Any]] = {}
     for item in items:
         item_id = str(item.get("id", ""))
-        if not item_id or item_id in seen:
+        if not item_id:
             continue
-        seen.add(item_id)
-        out.append(item)
-    return out
+        item_score = float(item.get("score", 0.0))
+        if item_id not in best_scores or item_score > float(best_scores[item_id].get("score", 0.0)):
+            best_scores[item_id] = item
+    return list(best_scores.values())
 
 
 def _retrieve_seed_nodes(
@@ -312,7 +312,7 @@ def _retrieve_edges_hops_1(
                utterance_ids, evidence, speaker_ids, confidence
         FROM kg_edges
         WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})
-        ORDER BY confidence DESC NULLS LAST, earliest_seconds ASC
+        ORDER BY edge_rank_score DESC NULLS LAST, confidence DESC NULLS LAST, earliest_seconds ASC
         LIMIT %s
         """,
         tuple(seed_ids + seed_ids + [max_edges]),
@@ -438,9 +438,7 @@ def _hydrate_citations(
 
             # If full_name is missing or looks unformatted, prefer normalized formatting.
             looks_unformatted = (
-                not base_full
-                or base_full == base_full.lower()
-                or base_full.startswith("s_")
+                not base_full or base_full == base_full.lower() or base_full.startswith("s_")
             )
             if looks_unformatted:
                 # If the stored normalized_name is actually the speaker_id,
@@ -480,8 +478,7 @@ def _hydrate_citations(
                     if session_speaker_title
                     else (
                         str(speaker_position)
-                        if speaker_position
-                        and str(speaker_position).strip().lower() != "unknown"
+                        if speaker_position and str(speaker_position).strip().lower() != "unknown"
                         else None
                     )
                 ),
@@ -497,13 +494,27 @@ def kg_hybrid_graph_rag(
     embedding_client: Any,
     query: str,
     hops: int = 1,
-    seed_k: int = 8,
-    max_edges: int = 60,
+    seed_k: int = 12,
+    max_edges: int = 90,
     max_citations: int = 12,
+    edge_rank_threshold: float | None = None,
 ) -> dict[str, Any]:
     """Hybrid retrieve seeds (vector+FTS), then expand KG edges N hops.
 
     This is designed to be used as a deterministic tool for an agent loop.
+
+    Args:
+        postgres: Database client
+        embedding_client: Embedding generation client
+        query: Search query
+        hops: Number of graph hops to expand (default: 1)
+        seed_k: Number of seed nodes to retrieve (default: 12)
+        max_edges: Maximum edges to return (default: 90)
+        max_citations: Maximum citations to return (default: 12)
+        edge_rank_threshold: Optional threshold to filter edges by edge_rank_score.
+            Only returns edges with score >= threshold.
+            Recommended: 0.05 after normalization, or 0.00001 before normalization.
+            None means no threshold filtering (default: None)
     """
     query = (query or "").strip()
     if not query:
@@ -581,11 +592,30 @@ def kg_hybrid_graph_rag(
         for uid in e.get("utterance_ids", []) or []:
             if uid not in utterance_ids:
                 utterance_ids.append(uid)
+
+    edges_filtered: int = 0
+    if edge_rank_threshold is not None:
+        edges_before_filter = len(edges)
+        edges = [e for e in edges if e.get("edge_rank_score", 0.0) >= edge_rank_threshold]
+        edges_filtered = edges_before_filter - len(edges)
+        if edges_filtered > 0:
+            edges = edges[:max_edges]
+
     citations = _hydrate_citations(
         postgres=postgres,
         utterance_ids=utterance_ids,
         max_citations=max_citations,
     )
+
+    debug_info = {
+        "seed_count": len(seeds),
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "citation_count": len(citations),
+    }
+    if edge_rank_threshold is not None:
+        debug_info["edge_rank_threshold"] = edge_rank_threshold
+        debug_info["edges_filtered_by_threshold"] = edges_filtered
 
     return {
         "query": query,
@@ -594,10 +624,5 @@ def kg_hybrid_graph_rag(
         "nodes": nodes,
         "edges": edges,
         "citations": citations,
-        "debug": {
-            "seed_count": len(seeds),
-            "node_count": len(nodes),
-            "edge_count": len(edges),
-            "citation_count": len(citations),
-        },
+        "debug": debug_info,
     }
