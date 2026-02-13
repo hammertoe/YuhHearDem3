@@ -5,7 +5,6 @@ import argparse
 from datetime import datetime
 
 from lib.db.postgres_client import PostgresClient
-from lib.db.memgraph_client import MemgraphClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.processors.paragraph_splitter import (
     group_transcripts_into_paragraphs,
@@ -76,9 +75,7 @@ def migrate_bills(
     bill_id_map = {}
 
     for bill in legislation_data:
-        bill_id = bill.get(
-            "id", generate_bill_id(bill.get("name", ""), set(bill_id_map.values()))
-        )
+        bill_id = bill.get("id", generate_bill_id(bill.get("name", ""), set(bill_id_map.values())))
 
         postgres_client.execute_update(
             """
@@ -155,9 +152,7 @@ def migrate_paragraphs_and_sentences(
         )
 
     for paragraph in paragraphs:
-        sentences = split_paragraph_into_sentences(
-            paragraph, video_id, video_date, video_title
-        )
+        sentences = split_paragraph_into_sentences(paragraph, video_id, video_date, video_title)
 
         for sentence in sentences:
             postgres_client.execute_update(
@@ -187,61 +182,6 @@ def migrate_paragraphs_and_sentences(
 
     print(f"✅ Migrated {len(paragraphs)} paragraphs with embeddings")
     print(f"✅ Migrated {len(transcripts)} sentences (no embeddings)")
-
-
-def migrate_knowledge_graph_to_memgraph(
-    memgraph_client: MemgraphClient, kg_data: dict[str, object]
-) -> None:
-    """Migrate knowledge graph nodes and edges to Memgraph."""
-    nodes = kg_data.get("nodes", [])
-    edges = kg_data.get("edges", [])
-
-    print(f"Migrating {len(nodes)} nodes and {len(edges)} edges...")
-
-    for node in nodes:
-        node_type = node.get("type", "Entity")
-        node_id = node.get("id", "")
-
-        if node_type == "SPEAKER":
-            memgraph_client.merge_entity(
-                "Speaker",
-                "id",
-                {
-                    "id": node_id,
-                    "name": node.get("text", ""),
-                    "normalized_name": node.get("text", "").lower(),
-                },
-            )
-        elif node_type == "LEGISLATION":
-            memgraph_client.merge_entity(
-                "Bill",
-                "id",
-                {"id": node_id, "title": node.get("text", ""), "bill_number": node_id},
-            )
-        else:
-            memgraph_client.merge_entity(
-                node_type,
-                "id",
-                {"id": node_id, "text": node.get("text", ""), "type": node_type},
-            )
-
-    for edge in edges:
-        source_id = edge.get("source", "")
-        target_id = edge.get("target", "")
-        relationship_type = edge.get("relationship", "MENTIONS")
-
-        memgraph_client.create_relationship(
-            source_id,
-            target_id,
-            relationship_type,
-            {
-                "context": edge.get("context", ""),
-                "speaker_id": edge.get("speaker_id", ""),
-                "timestamp": edge.get("timestamp", ""),
-            },
-        )
-
-    print(f"✅ Migrated {len(nodes)} nodes and {len(edges)} edges to Memgraph")
 
 
 def migrate_video_metadata(
@@ -278,9 +218,7 @@ def migrate_video_metadata(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Migrate existing data to three-tier storage"
-    )
+    parser = argparse.ArgumentParser(description="Migrate existing data to three-tier storage")
     parser.add_argument(
         "--transcript-file",
         default="transcription_output.json",
@@ -299,11 +237,9 @@ def main():
 
     try:
         transcript_data = load_transcript_data(args.transcript_file)
-        kg_data = load_knowledge_graph_data(args.kg_file)
 
         with (
             PostgresClient() as postgres,
-            MemgraphClient() as memgraph,
             GoogleEmbeddingClient() as embeddings,
         ):
             video_id = migrate_video_metadata(postgres, transcript_data)
@@ -320,8 +256,6 @@ def main():
                 transcript_data["video_metadata"]["title"],
                 transcript_data["video_metadata"]["upload_date"],
             )
-
-            migrate_knowledge_graph_to_memgraph(memgraph, kg_data)
 
         print("\n" + "=" * 80)
         print("✅ Migration Complete!")

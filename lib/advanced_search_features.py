@@ -8,7 +8,6 @@ from typing import Any
 from datetime import datetime
 
 from lib.db.postgres_client import PostgresClient
-from lib.db.memgraph_client import MemgraphClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 
 
@@ -18,17 +17,9 @@ class AdvancedSearchFeatures:
     def __init__(
         self,
         postgres: PostgresClient | None = None,
-        memgraph: MemgraphClient | None = None,
         embedding_client: GoogleEmbeddingClient | None = None,
     ):
         self.postgres = postgres or PostgresClient()
-        self.memgraph = memgraph
-        if self.memgraph is None:
-            try:
-                self.memgraph = MemgraphClient()
-            except Exception:
-                print("Warning: Could not connect to Memgraph, graph features will be disabled")
-                self.memgraph = None
         self.embedding_client = embedding_client or GoogleEmbeddingClient()
 
     def temporal_search(
@@ -207,104 +198,6 @@ class AdvancedSearchFeatures:
 
         return moving_avg
 
-    def multi_hop_query(
-        self,
-        start_entity_id: str,
-        hops: int = 2,
-        max_results: int = 50,
-        relationship_types: list[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Execute multi-hop graph query."""
-        print(f"\nMulti-hop query from: {start_entity_id}")
-        print(f"Hops: {hops}")
-        print(f"Max results: {max_results}")
-
-        if not relationship_types:
-            relationship_types = [
-                "DISCUSSES",
-                "MENTIONS",
-                "AGREES_WITH",
-                "DISAGREES_WITH",
-                "QUESTIONS",
-                "RESPONDS_TO",
-                "ADVOCATES_FOR",
-                "CRITICIZES",
-                "WORKS_WITH",
-            ]
-
-        rel_types_str = ", ".join(f"'{rt}'" for rt in relationship_types)
-
-        cypher = f"""
-            MATCH (start {{id: $start_id}})-[r*1..{hops}]-(related)
-            WHERE any(rel IN r WHERE type(rel) IN [{rel_types_str}])
-            RETURN DISTINCT
-                start.id as start_entity,
-                related.id as related_entity,
-                type(last(r)) as relationship_type,
-                labels(related)[0] as related_type
-            LIMIT $limit
-        """
-
-        results = self.memgraph.execute_query(
-            cypher, {"start_id": start_entity_id, "limit": max_results}
-        )
-
-        print(f"✅ Multi-hop query found {len(results)} relationships")
-
-        return results
-
-    def complex_query(self, query_type: str, params: dict[str, Any]) -> dict[str, Any]:
-        """Execute complex graph queries."""
-        print(f"\nComplex query: {query_type}")
-        print(f"Params: {params}")
-
-        queries = {
-            "speaker_influence": """
-                MATCH (s:Speaker)-[r:DISCUSSES]->(topic:Topic)
-                WITH s, topic, COUNT(r) AS count
-                RETURN s.id AS speaker_id,
-                       s.normalized_name AS speaker_name,
-                       topic.id AS topic_id,
-                       topic.text AS topic_text,
-                       count
-                ORDER BY count DESC
-                LIMIT 20
-            """,
-            "bill_connections": """
-                MATCH (b:Bill)-[r:DISCUSSED_BY]->(s:Speaker)
-                RETURN DISTINCT
-                    b.id AS bill_id,
-                    b.title AS bill_title,
-                    b.status AS bill_status,
-                    COUNT(r) AS speaker_count
-                ORDER BY speaker_count DESC
-                LIMIT 20
-            """,
-            "controversial_topics": """
-                MATCH (s1:Speaker)-[r:DISAGREES_WITH]->(s2:Speaker)
-                MATCH (s1)-[r:DISCUSSES]->(topic:Topic)<-[r:AGREES_WITH]-(s2)
-                RETURN DISTINCT
-                    topic.text AS topic,
-                    COUNT(r) AS agree_count,
-                    s1.id AS disagreeing_speaker_1,
-                    s1.name AS disagreeing_speaker_name_1,
-                    s2.id AS disagreeing_speaker_2,
-                    s2.name AS disagreeing_speaker_name_2
-                ORDER BY agree_count DESC
-                LIMIT 50
-            """,
-        }
-
-        query = queries.get(query_type)
-        if not query:
-            return {"query_type": query_type, "results": [], "count": 0}
-
-        results = self.memgraph.execute_query(query, params or {})
-        output = {"query_type": query_type, "results": results, "count": len(results)}
-
-        print(f"✅ Query found {output['count']} results")
-        return output
-
 
 def main():
     parser = argparse.ArgumentParser(description="Advanced search features")
@@ -321,24 +214,10 @@ def main():
     trends_parser.add_argument("--entity-id")
     trends_parser.add_argument("--window-days", type=int, default=30)
 
-    multi_hop_parser = subparsers.add_parser("multi-hop")
-    multi_hop_parser.add_argument("--entity-id", required=True)
-    multi_hop_parser.add_argument("--hops", type=int, default=2)
-    multi_hop_parser.add_argument("--max-results", type=int, default=50)
-    multi_hop_parser.add_argument("--relationship-types", nargs="+")
-
-    complex_parser = subparsers.add_parser("complex")
-    complex_parser.add_argument(
-        "--query-type",
-        required=True,
-        choices=["speaker_influence", "bill_connections", "controversial_topics"],
-    )
-    complex_parser.add_argument("--max-results", type=int, default=20)
-
     args = parser.parse_args()
 
     print("=" * 80)
-    print("Advanced Search Features - Phase 4")
+    print("Advanced Search Features")
     print("=" * 80)
 
     features = AdvancedSearchFeatures()
@@ -374,20 +253,6 @@ def main():
         results = features.trend_analysis(args.entity_id, args.window_days, args.limit)
         print("\n✅ Trend analysis complete")
         with open("trend_analysis_results.json", "w") as f:
-            json.dump(results, f, indent=2)
-
-    elif args.command == "multi-hop":
-        results = features.multi_hop_query(
-            args.entity_id, args.hops, args.max_results, args.relationship_types
-        )
-        print("\n✅ Multi-hop query complete")
-        with open("multi_hop_results.json", "w") as f:
-            json.dump(results, f, indent=2)
-
-    elif args.command == "complex":
-        results = features.complex_query(args.query_type, {"max_results": args.max_results})
-        print("\n✅ Complex query complete")
-        with open("complex_search_results.json", "w") as f:
             json.dump(results, f, indent=2)
 
     else:

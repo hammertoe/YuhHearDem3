@@ -1,10 +1,9 @@
-"""Bill ingestion into Postgres (three-tier) and Memgraph."""
+"""Bill ingestion into Postgres (three-tier storage)."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from lib.db.memgraph_client import MemgraphClient
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import generate_bill_id, generate_entity_id
@@ -20,11 +19,9 @@ class BillIngestor:
     def __init__(
         self,
         postgres: PostgresClient | None = None,
-        memgraph: MemgraphClient | None = None,
         embedding_client: GoogleEmbeddingClient | None = None,
     ):
         self.postgres = postgres or PostgresClient()
-        self.memgraph = memgraph or MemgraphClient()
         self.embedding_client = embedding_client or GoogleEmbeddingClient()
 
     def ingest_bills(self, bills: list[dict[str, Any]], *, embed: bool = True) -> None:
@@ -44,11 +41,8 @@ class BillIngestor:
         self._upsert_bill_postgres(bill, bill_id, entity_id)
         if embed:
             self._store_bill_embedding_postgres(bill, entity_id)
-        self._upsert_bill_graph(bill, bill_id)
 
-    def _upsert_bill_entity_postgres(
-        self, bill: dict[str, Any], entity_id: str
-    ) -> None:
+    def _upsert_bill_entity_postgres(self, bill: dict[str, Any], entity_id: str) -> None:
         """Upsert a row in entities representing the bill."""
         self.postgres.execute_update(
             """
@@ -73,9 +67,7 @@ class BillIngestor:
             ),
         )
 
-    def _upsert_bill_postgres(
-        self, bill: dict[str, Any], bill_id: str, entity_id: str
-    ) -> None:
+    def _upsert_bill_postgres(self, bill: dict[str, Any], bill_id: str, entity_id: str) -> None:
         """Insert/update the bill record."""
         keywords = bill.get("keywords")
         if not isinstance(keywords, list):
@@ -115,9 +107,7 @@ class BillIngestor:
             ),
         )
 
-    def _store_bill_embedding_postgres(
-        self, bill: dict[str, Any], entity_id: str
-    ) -> None:
+    def _store_bill_embedding_postgres(self, bill: dict[str, Any], entity_id: str) -> None:
         """Generate and store bill embedding in entities."""
         text = (
             (bill.get("title", "") or "").strip()
@@ -131,9 +121,7 @@ class BillIngestor:
         try:
             embedding = self.embedding_client.generate_embedding(text)
         except Exception as e:
-            print(
-                f"⚠️ Error generating embedding for bill {bill.get('bill_number', '')}: {e}"
-            )
+            print(f"⚠️ Error generating embedding for bill {bill.get('bill_number', '')}: {e}")
             return
 
         self.postgres.execute_update(
@@ -144,41 +132,3 @@ class BillIngestor:
             """,
             (_vector_literal(embedding), entity_id),
         )
-
-    def _upsert_bill_graph(self, bill: dict[str, Any], bill_id: str) -> None:
-        """Ingest bill into Memgraph using stable 'id' properties."""
-        self.memgraph.merge_entity(
-            "Bill",
-            "id",
-            {
-                "id": bill_id,
-                "bill_number": bill.get("bill_number", ""),
-                "title": bill.get("title", ""),
-                "status": bill.get("status", "Unknown"),
-                "category": bill.get("category", ""),
-            },
-        )
-
-        extracted = bill.get("extracted_entities") or {}
-
-        for topic in (extracted.get("topics") or [])[:5]:
-            text = str(topic.get("text", "")).strip()
-            if not text:
-                continue
-            topic_id = generate_entity_id(text, "TOPIC")
-            self.memgraph.merge_entity("Topic", "id", {"id": topic_id, "text": text})
-            self.memgraph.create_relationship(
-                bill_id, topic_id, "DISCUSSES", {"context": text}
-            )
-
-        for org in (extracted.get("organizations") or [])[:3]:
-            text = str(org.get("text", "")).strip()
-            if not text:
-                continue
-            org_id = generate_entity_id(text, "ORG")
-            self.memgraph.merge_entity(
-                "Organization", "id", {"id": org_id, "text": text}
-            )
-            self.memgraph.create_relationship(
-                bill_id, org_id, "RELATED_TO", {"context": text}
-            )

@@ -349,9 +349,7 @@ Return JSON only:
             for row in rows
         ]
 
-    def _retrieve_sentences_for_utterances(
-        self, utterance_ids: list[str]
-    ) -> list[dict[str, Any]]:
+    def _retrieve_sentences_for_utterances(self, utterance_ids: list[str]) -> list[dict[str, Any]]:
         if not utterance_ids:
             return []
 
@@ -393,14 +391,13 @@ Return JSON only:
     ) -> str:
         focus_context = ""
         if thread_state.get("focus_node_labels"):
-            focus_context = f"\nCurrent focus concepts: {', '.join(thread_state['focus_node_labels'])}\n"
+            focus_context = (
+                f"\nCurrent focus concepts: {', '.join(thread_state['focus_node_labels'])}\n"
+            )
 
-        nodes_table = "\n".join(
-            f"- {n['id']} ({n['type']}): {n['label']}" for n in nodes[:15]
-        )
+        nodes_table = "\n".join(f"- {n['id']} ({n['type']}): {n['label']}" for n in nodes[:15])
         edges_table = "\n".join(
-            f"- {e['source_id']} {e['predicate']} {e['target_id']}"
-            f" (confidence: {e['confidence']})"
+            f"- {e['source_id']} {e['predicate']} {e['target_id']} (confidence: {e['confidence']})"
             for e in edges[:20]
         )
         sentences_context = "\n".join(
@@ -495,8 +492,7 @@ Answer the question. Return JSON only."""
             candidates = [
                 c
                 for c in candidates
-                if not planner_output.node_types
-                or c["type"] in planner_output.node_types
+                if not planner_output.node_types or c["type"] in planner_output.node_types
             ]
 
         node_ids = [c["id"] for c in candidates]
@@ -513,7 +509,6 @@ Answer the question. Return JSON only."""
 
             adv = AdvancedSearchFeatures(
                 postgres=self.postgres,
-                memgraph=None,
                 embedding_client=self.embedding,
             )
             fallback_results = adv.temporal_search(
@@ -645,10 +640,7 @@ Answer the question. Return JSON only."""
                 utterance_ids=e.get("utterance_ids", []),
             )
             for e in edges
-            if any(
-                uid in e.get("utterance_ids", [])
-                for uid in answer_data.get("citations", [])
-            )
+            if any(uid in e.get("utterance_ids", []) for uid in answer_data.get("citations", []))
         ]
 
         focus_nodes_objects = [

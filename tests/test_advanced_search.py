@@ -40,11 +40,9 @@ def test_advanced_search_init():
     """Test advanced search initialization."""
     features = AdvancedSearchFeatures(
         postgres=Mock(),
-        memgraph=Mock(),
         embedding_client=Mock(),
     )
     assert features.postgres is not None
-    assert features.memgraph is not None
     assert features.embedding_client is not None
     print("✅ Advanced search initialization works")
 
@@ -57,7 +55,6 @@ def test_temporal_search():
 
     features = AdvancedSearchFeatures(
         postgres=postgres,
-        memgraph=Mock(),
         embedding_client=embedding_client,
     )
 
@@ -77,9 +74,7 @@ def test_temporal_search():
         )
     ]
 
-    results = features.temporal_search(
-        "test query", "2026-01-01", "2026-01-31", None, None, 10
-    )
+    results = features.temporal_search("test query", "2026-01-01", "2026-01-31", None, None, 10)
 
     assert len(results) > 0
     assert all("score" in r for r in results)
@@ -95,7 +90,6 @@ def test_trend_analysis():
     postgres = Mock()
     features = AdvancedSearchFeatures(
         postgres=postgres,
-        memgraph=Mock(),
         embedding_client=Mock(),
     )
 
@@ -135,133 +129,6 @@ def test_moving_average_calculation():
     assert result[1]["value"] == pytest.approx(6.0)
 
     print("✅ Moving average calculation works")
-
-
-def test_multi_hop_query():
-    """Test multi-hop graph traversal."""
-    memgraph = Mock()
-    features = AdvancedSearchFeatures(
-        postgres=Mock(),
-        memgraph=memgraph,
-        embedding_client=Mock(),
-    )
-
-    memgraph.execute_query.return_value = [
-        {
-            "start_entity": "start_id",
-            "related_entity": "related_1",
-            "relationship_type": "DISCUSSES",
-            "labels": ["Topic"],
-        },
-        {
-            "start_entity": "start_id",
-            "related_entity": "related_2",
-            "relationship_type": "DISCUSSES",
-            "labels": ["Topic"],
-        },
-    ]
-
-    results = features.multi_hop_query("start_id", 2)
-
-    assert len(results) == 2
-    assert results[0]["related_entity"] == "related_1"
-    assert results[1]["related_entity"] == "related_2"
-    assert all("relationship_type" in r for r in results)
-
-    print("✅ Multi-hop query works")
-
-
-def test_complex_query_speaker_influence():
-    """Test speaker influence query."""
-    memgraph = Mock()
-    features = AdvancedSearchFeatures(
-        postgres=Mock(),
-        memgraph=memgraph,
-        embedding_client=Mock(),
-    )
-
-    memgraph.execute_query.return_value = [
-        {
-            "speaker_id": "s_speaker_1",
-            "topic_id": "topic_id",
-            "topic_text": "Traffic safety",
-            "count": 15,
-        }
-    ]
-
-    result = features.complex_query("speaker_influence", {"max_results": 20})
-
-    assert result["query_type"] == "speaker_influence"
-    assert result["count"] == 1
-    assert result["results"][0]["speaker_id"] == "s_speaker_1"
-    assert result["results"][0]["topic_text"] == "Traffic safety"
-
-    print("✅ Complex query works")
-
-
-def test_complex_query_bill_connections():
-    """Test bill connections query."""
-    memgraph = Mock()
-    features = AdvancedSearchFeatures(
-        postgres=Mock(),
-        memgraph=memgraph,
-        embedding_client=Mock(),
-    )
-
-    memgraph.execute_query.return_value = [
-        {"bill_id": "bill_id", "bill_title": "Bill Title", "speaker_count": 5}
-    ]
-
-    result = features.complex_query("bill_connections", {"max_results": 20})
-
-    assert result["query_type"] == "bill_connections"
-    assert result["count"] == 1
-    assert result["results"][0]["bill_id"] == "bill_id"
-
-    print("✅ Complex query works")
-
-
-def test_complex_query_controversial_topics():
-    """Test controversial topics query."""
-    memgraph = Mock()
-    features = AdvancedSearchFeatures(
-        postgres=Mock(),
-        memgraph=memgraph,
-        embedding_client=Mock(),
-    )
-
-    memgraph.execute_query.return_value = [
-        {
-            "topic": "topic_id",
-            "agree_count": 10,
-            "disagreeing_speaker_1": "speaker_1",
-            "disagreeing_speaker_2": "speaker_2",
-        }
-    ]
-
-    result = features.complex_query("controversial_topics", {"max_results": 20})
-
-    assert result["query_type"] == "controversial_topics"
-    assert result["count"] == 1
-    assert result["results"][0]["agree_count"] == 10
-
-    print("✅ Complex query works")
-
-
-def test_invalid_query_type():
-    """Test error handling for invalid query type."""
-    features = AdvancedSearchFeatures(
-        postgres=Mock(),
-        memgraph=Mock(),
-        embedding_client=Mock(),
-    )
-
-    result = features.complex_query("invalid_query", {"max_results": 20})
-
-    assert result["query_type"] == "invalid_query"
-    assert result["results"] == []
-
-    print("✅ Invalid query type handling works")
 
 
 if __name__ == "__main__":

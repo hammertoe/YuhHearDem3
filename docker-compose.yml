@@ -19,22 +19,5 @@ services:
       timeout: 5s
       retries: 5
 
-  memgraph:
-    image: memgraph/memgraph-platform:latest
-    container_name: parliament_memgraph
-    ports:
-      - "7687:7687"
-      - "7444:7444"
-    volumes:
-      - memgraph_data:/var/lib/memgraph
-    environment:
-      MEMGRAPH__LOG_LEVEL: INFO
-    healthcheck:
-      test: ["CMD-SHELL", "mgclient --port 7687 --execute 'RETURN 1;' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   postgres_data:
-  memgraph_data:

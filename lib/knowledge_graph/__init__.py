@@ -1,1 +1,1 @@
-"""Knowledge graph ingestion into Memgraph."""
+"""Knowledge graph storage and extraction."""

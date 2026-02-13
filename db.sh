@@ -30,14 +30,6 @@ check_containers() {
         echo "Run: docker-compose up -d"
         exit 1
     fi
-    
-    if docker ps | grep -q "parliament_memgraph"; then
-        echo -e "${GREEN}✓${NC} Memgraph container running"
-    else
-        echo -e "${RED}✗${NC} Memgraph container NOT running"
-        echo "Run: docker-compose up -d"
-        exit 1
-    fi
 }
 
 # Function to wait for database to be ready
@@ -120,9 +112,8 @@ show_menu() {
     echo "6. Show database information"
     echo "7. Create test data"
     echo "8. View container logs (PostgreSQL)"
-    echo "9. View container logs (Memgraph)"
     echo "0. Exit"
-    echo -n -e "\n${YELLOW}Enter choice [0-9]: ${NC}"
+    echo -n -e "\n${YELLOW}Enter choice [0-8]: ${NC}"
     read choice
 }
 
@@ -163,12 +154,9 @@ if [ $# -gt 0 ]; then
         logs-postgres)
             docker logs parliament_postgres --tail 100
             ;;
-        logs-memgraph)
-            docker logs parliament_memgraph --tail 100
-            ;;
         *)
             echo "Unknown command: $1"
-            echo "Usage: $0 {check|wait|connect|schema|tables|info|test|logs-postgres|logs-memgraph}"
+            echo "Usage: $0 {check|wait|connect|schema|tables|info|test|logs-postgres}"
             exit 1
             ;;
     esac
@@ -210,9 +198,6 @@ else
                 ;;
             8)
                 docker logs parliament_postgres --tail 100
-                ;;
-            9)
-                docker logs parliament_memgraph --tail 100
                 ;;
             0)
                 echo "Goodbye!"

@@ -20,7 +20,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        "integration: requires running PostgreSQL/Memgraph (and sometimes API keys)",
+        "integration: requires running PostgreSQL (and sometimes API keys)",
     )
 
 
@@ -30,9 +30,7 @@ def _integration_enabled(config: pytest.Config) -> bool:
     return os.getenv("RUN_INTEGRATION") in {"1", "true", "TRUE", "yes", "YES"}
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     if _integration_enabled(config):
         return
 

@@ -4,10 +4,9 @@ React + TypeScript frontend for the parliamentary search system.
 
 ## Features
 
-- **Hybrid Search**: Vector + BM25 + Graph search with re-ranking
+- **Hybrid Search**: Vector + BM25 search with re-ranking
 - **Temporal Search**: Filter by date range, speaker, entity type
 - **Video Player**: Embedded YouTube player with timestamp navigation
-- **Graph Visualization**: Interactive graph of entities and relationships
 - **Speaker Profiles**: View speaker statistics and contributions
 - **Responsive Design**: Mobile-friendly interface
 
@@ -56,10 +55,9 @@ src/
 
 The frontend expects the following backend API endpoints:
 
-- \`POST /api/search\` - Hybrid search (vector + graph + re-ranking)
+- \`POST /api/search\` - Hybrid search (vector + BM25 + re-ranking)
 - \`POST /api/search/temporal\` - Temporal search with filters
 - \`GET /api/search/trends\` - Trend analysis for entities
-- \`GET /api/graph\` - Graph data for visualization
 - \`GET /api/speakers\` - List all speakers
 - \`GET /api/speakers/:id\` - Get speaker stats
 
@@ -77,12 +75,6 @@ The frontend expects the following backend API endpoints:
 - Jump to specific timestamp
 - Close button to return to results
 - Display jump confirmation
-
-### Graph Visualization
-- Interactive graph with drag/zoom
-- Color-coded by entity type
-- Click nodes to see details
-- Max 2 hops traversal
 
 ### Speaker Profiles
 - List all speakers with stats

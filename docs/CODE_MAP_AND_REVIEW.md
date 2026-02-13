@@ -122,7 +122,6 @@ YuhHearDem3 is a parliamentary transcription and knowledge graph system that pro
 | `export_order_paper.py` | Export order papers |
 | `deploy.sh` | Deployment script |
 | `kg_export_html.py` | Export KG to HTML |
-| `kg_sync_memgraph.py` | Sync with Memgraph |
 | `kg_seed_base.py` | Seed base KG |
 
 ### Tests (`tests/`)

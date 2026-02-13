@@ -16,7 +16,6 @@ from google.genai import types
 
 from lib.db.postgres_client import PostgresClient
 from lib.db.chat_schema import ensure_chat_schema
-from lib.db.memgraph_client import MemgraphClient
 from lib.chat_agent_v2 import KGChatAgentV2
 from lib.kg_agent_loop import KGAgentLoop
 from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
@@ -40,11 +39,6 @@ def _get_postgres() -> PostgresClient:
     return postgres
 
 
-def _get_memgraph() -> MemgraphClient:
-    assert memgraph is not None
-    return memgraph
-
-
 def _get_embedding_client() -> GoogleEmbeddingClient:
     assert embedding_client is not None
     return embedding_client
@@ -62,22 +56,15 @@ def _get_chat_agent() -> KGChatAgentV2:
 
 @app.on_event("startup")
 def _startup() -> None:
-    global postgres, memgraph, embedding_client, advanced_search, chat_agent
+    global postgres, embedding_client, advanced_search, chat_agent
     postgres = PostgresClient()
     try:
-        # Try to ensure chat schema, but don't fail if it already exists with different structure
         ensure_chat_schema(postgres)
     except Exception:
-        pass  # Schema may already exist with different structure
-    try:
-        memgraph = MemgraphClient()
-    except Exception as e:
-        print(f"Warning: Could not connect to Memgraph: {e}")
-        memgraph = None
+        pass
     embedding_client = GoogleEmbeddingClient()
     advanced_search = AdvancedSearchFeatures(
         postgres=postgres,
-        memgraph=memgraph,
         embedding_client=embedding_client,
     )
     chat_agent = KGChatAgentV2(
@@ -125,25 +112,6 @@ class TrendResult(BaseModel):
     trends: list[dict[str, Any]]
     summary: dict[str, Any]
     moving_average: list[dict[str, Any]]
-
-
-class GraphNode(BaseModel):
-    id: str
-    label: str
-    type: str
-    properties: dict[str, Any]
-
-
-class GraphEdge(BaseModel):
-    from_node: str = Field(serialization_alias="from")
-    to_node: str = Field(serialization_alias="to")
-    label: str
-    properties: dict[str, Any]
-
-
-class GraphResponse(BaseModel):
-    nodes: list[GraphNode]
-    edges: list[GraphEdge]
 
 
 class Speaker(BaseModel):
@@ -262,7 +230,6 @@ class ChatMessageResponse(BaseModel):
 
 
 postgres: PostgresClient | None = None
-memgraph: MemgraphClient | None = None
 embedding_client: GoogleEmbeddingClient | None = None
 advanced_search: AdvancedSearchFeatures | None = None
 chat_agent: KGChatAgentV2 | None = None
@@ -271,11 +238,6 @@ chat_agent: KGChatAgentV2 | None = None
 def _get_postgres() -> PostgresClient:
     assert postgres is not None
     return postgres
-
-
-def _get_memgraph() -> MemgraphClient:
-    assert memgraph is not None
-    return memgraph
 
 
 def _get_embedding_client() -> GoogleEmbeddingClient:
@@ -375,33 +337,6 @@ def bm25_search_sentences(query: str, limit: int) -> list[dict[str, Any]]:
         }
         for row in results
     ]
-
-
-def graph_expand_entities(
-    entity_ids: list[str], max_depth: int = 2
-) -> dict[str, list[dict[str, Any]]]:
-    """Expand entities using graph traversal."""
-    expanded = {}
-
-    for entity_id in entity_ids:
-        results = _get_memgraph().execute_query(
-            """
-            MATCH (e:Entity {id: $id})-[*1..2]-(related)
-            RETURN DISTINCT e.id as entity_id,
-                   related.id as related_id,
-                   related.text as related_text
-            LIMIT 50
-        """,
-            {"id": entity_id},
-        )
-
-        related_entities = [
-            {"id": row["related_id"], "text": row["related_text"]} for row in results
-        ]
-
-        expanded[entity_id] = related_entities
-
-    return expanded
 
 
 def retrieve_sentences_for_entities(
@@ -640,61 +575,6 @@ async def get_trends(
             summary=result["summary"],
             moving_average=result["moving_average"],
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/graph")
-async def get_graph(entity_id: str, max_depth: int = 2) -> dict[str, Any]:
-    """Get graph data for entity."""
-    try:
-        results = _get_advanced_search().multi_hop_query(
-            entity_id,
-            hops=max_depth,
-            max_results=50,
-        )
-
-        nodes: list[GraphNode] = []
-        edges: list[GraphEdge] = []
-        seen_nodes: set[str] = set()
-
-        for r in results:
-            start_id = r.get("start_entity")
-            related_id = r.get("related_entity")
-
-            if start_id and start_id not in seen_nodes:
-                nodes.append(
-                    GraphNode(
-                        id=start_id,
-                        label=start_id,
-                        type=r.get("start_type", "Unknown"),
-                        properties={},
-                    )
-                )
-                seen_nodes.add(start_id)
-
-            if related_id and related_id not in seen_nodes:
-                nodes.append(
-                    GraphNode(
-                        id=related_id,
-                        label=related_id,
-                        type=r.get("related_type", "Unknown"),
-                        properties={},
-                    )
-                )
-                seen_nodes.add(related_id)
-
-            if start_id and related_id:
-                edges.append(
-                    GraphEdge(
-                        from_node=start_id,
-                        to_node=related_id,
-                        label=r.get("relationship_type", ""),
-                        properties={},
-                    )
-                )
-
-        return GraphResponse(nodes=nodes, edges=edges).model_dump(by_alias=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

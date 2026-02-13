@@ -6,15 +6,13 @@ from lib.id_generators import generate_bill_id, generate_entity_id
 from lib.processors.bill_ingestor import BillIngestor
 
 
-def test_bill_ingestor_inserts_entity_and_bill_and_graph() -> None:
+def test_bill_ingestor_inserts_entity_and_bill() -> None:
     postgres = Mock()
-    memgraph = Mock()
     embeddings = Mock()
     embeddings.generate_embedding.return_value = [0.0] * 768
 
     ingestor = BillIngestor(
         postgres=postgres,
-        memgraph=memgraph,
         embedding_client=embeddings,
     )
 
@@ -35,5 +33,3 @@ def test_bill_ingestor_inserts_entity_and_bill_and_graph() -> None:
 
     # Postgres should be asked to upsert entity, insert/update bill, and store embeddings.
     assert postgres.execute_update.call_count >= 3
-    # Memgraph should be asked to merge a bill node.
-    assert memgraph.merge_entity.call_count >= 1

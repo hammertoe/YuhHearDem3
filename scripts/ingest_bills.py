@@ -1,4 +1,4 @@
-"""Scrape, process, and ingest bills into Postgres and Memgraph."""
+"""Scrape, process, and ingest bills into Postgres."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-from lib.db.memgraph_client import MemgraphClient
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.processors.bill_entity_extractor import BillEntityExtractor
@@ -87,10 +86,9 @@ def main() -> int:
     print(f"\n✅ Saved {len(bills)} processed bills to {args.processed_file}")
 
     embeddings = None if args.skip_embeddings else GoogleEmbeddingClient()
-    with PostgresClient() as postgres, MemgraphClient() as memgraph:
+    with PostgresClient() as postgres:
         ingestor = BillIngestor(
             postgres=postgres,
-            memgraph=memgraph,
             embedding_client=embeddings,
         )
         ingestor.ingest_bills(bills, embed=not args.skip_embeddings)

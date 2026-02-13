@@ -2,7 +2,6 @@
 import pytest
 
 from lib.db.postgres_client import PostgresClient
-from lib.db.memgraph_client import MemgraphClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 
 from lib.id_generators import generate_bill_id, generate_entity_id
@@ -25,9 +24,7 @@ def sample_bills():
             "source_text": "THE ROAD TRAFFIC ACT...",
             "category": "Transport",
             "extracted_entities": {
-                "organizations": [
-                    {"text": "Ministry of Transport", "start": 0, "end": 21}
-                ],
+                "organizations": [{"text": "Ministry of Transport", "start": 0, "end": 21}],
                 "topics": [{"text": "traffic safety", "start": 22, "end": 35}],
                 "persons": [{"text": "John Smith", "start": 36, "end": 46}],
             },
@@ -42,9 +39,7 @@ def sample_bills():
             "source_text": "THE HEALTH SERVICES ACT...",
             "category": "Health",
             "extracted_entities": {
-                "organizations": [
-                    {"text": "Ministry of Health", "start": 0, "end": 18}
-                ],
+                "organizations": [{"text": "Ministry of Health", "start": 0, "end": 18}],
                 "topics": [{"text": "healthcare services", "start": 19, "end": 40}],
             },
         },
@@ -57,13 +52,11 @@ def test_bill_ingestor_init():
 
     with (
         PostgresClient() as postgres,
-        MemgraphClient() as memgraph,
         GoogleEmbeddingClient() as embeddings,
     ):
         ingestor = BillIngestor()
 
         assert ingestor.postgres is not None
-        assert ingestor.memgraph is not None
         assert ingestor.embedding_client is not None
         assert ingestor.entity_extractor is not None
 
@@ -76,7 +69,6 @@ def test_ingest_bill_postgres():
 
     with (
         PostgresClient() as postgres,
-        MemgraphClient() as memgraph,
         GoogleEmbeddingClient() as embeddings,
     ):
         ingestor = BillIngestor()
@@ -112,8 +104,9 @@ def test_ingest_bill_postgres():
 def test_ingest_bill_embeddings():
     """Test bill embedding generation and storage."""
     from lib.processors.bill_ingestor import BillIngestor
+    from unittest.mock import patch
 
-    with PostgresClient() as postgres, MemgraphClient() as memgraph:
+    with PostgresClient() as postgres, GoogleEmbeddingClient() as embeddings:
         ingestor = BillIngestor()
 
         bill_data = {
@@ -125,9 +118,7 @@ def test_ingest_bill_embeddings():
         bill_id = generate_bill_id("TEST", set())
         entity_id = generate_entity_id("Test Bill", "BILL")
 
-        with patch.object(
-            ingestor.embedding_client, "generate_embedding"
-        ) as mock_embed:
+        with patch.object(ingestor.embedding_client, "generate_embedding") as mock_embed:
             mock_embed.return_value = [0.1, 0.2, 0.3] * 256
 
             ingestor._ingest_bill_embeddings(bill_data, entity_id)
@@ -145,40 +136,6 @@ def test_ingest_bill_embeddings():
                 pytest.fail("Embedding not stored in entities table")
 
 
-def test_ingest_bill_graph():
-    """Test bill ingestion into Memgraph."""
-    from lib.processors.bill_ingestor import BillIngestor
-
-    with PostgresClient() as postgres, MemgraphClient() as memgraph:
-        ingestor = BillIngestor()
-
-        bill_data = {
-            "bill_number": "HR 1234",
-            "title": "Road Traffic (Amendment) Bill",
-            "status": "Passed",
-            "extracted_entities": {
-                "organizations": [{"text": "Ministry of Transport"}],
-                "topics": [{"text": "traffic safety"}],
-            },
-        }
-
-        bill_id = generate_bill_id("HR 1234", set())
-        entity_id = generate_entity_id("Road Traffic (Amendment) Bill", "BILL")
-
-        ingestor._ingest_bill_graph(bill_data, bill_id, entity_id)
-
-        result = memgraph.execute_query(
-            """
-            MATCH (b:Bill {bill_number: $number})
-            RETURN b
-        """,
-            {"number": "HR 1234"},
-        )
-
-        assert len(result) > 0
-        print("✅ Bill graph ingestion works")
-
-
 def test_ingest_bills_batch():
     """Test batch bill ingestion."""
     from lib.processors.bill_ingestor import BillIngestor
@@ -194,7 +151,6 @@ def test_ingest_bills_batch():
 
     with (
         PostgresClient() as postgres,
-        MemgraphClient() as memgraph,
         GoogleEmbeddingClient() as embeddings,
     ):
         ingestor = BillIngestor()
@@ -227,9 +183,7 @@ def test_update_existing_bills():
         }
 
         bill_id = generate_bill_id("HR 1234", set())
-        entity_id = generate_entity_id(
-            "Road Traffic (Amendment) Bill (Updated)", "BILL"
-        )
+        entity_id = generate_entity_id("Road Traffic (Amendment) Bill (Updated)", "BILL")
 
         ingestor._ingest_bill_postgres(bill_data, bill_id, entity_id)
 

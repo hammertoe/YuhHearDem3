@@ -18,11 +18,6 @@ class DatabaseConfig:
     postgres_user: str = os.getenv("POSTGRES_USER", "postgres")
     postgres_password: str = os.getenv("POSTGRES_PASSWORD", "postgres")
 
-    memgraph_host: str = os.getenv("MEMGRAPH_HOST", "localhost")
-    memgraph_port: int = int(os.getenv("MEMGRAPH_PORT", "7687"))
-    memgraph_user: str = os.getenv("MEMGRAPH_USER", "")
-    memgraph_password: str = os.getenv("MEMGRAPH_PASSWORD", "")
-
 
 @dataclass
 class EmbeddingConfig:
