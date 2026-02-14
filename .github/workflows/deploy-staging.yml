@@ -15,6 +15,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/hammertoe/yhd
   STAGING_HOST: 89.167.73.70
+  GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
 jobs:
   deploy:
@@ -30,7 +31,9 @@ jobs:
           host: ${{ env.STAGING_HOST }}
           username: matt
           key: ${{ secrets.STAGING_SSH_KEY }}
+          envs: GHCR_TOKEN
           script: |
+            export GHCR_TOKEN="$GHCR_TOKEN"
             cd /opt/yuhheardem3
             git pull origin main || echo "Git pull failed, continuing with existing scripts..."
             ./deploy.sh ${{ github.event.workflow_run.head_sha }}
