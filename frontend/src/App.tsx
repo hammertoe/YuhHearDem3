@@ -327,14 +327,14 @@ function MarkdownMessage({
     const suffixCounts = new Map<string, number>();
     linkIds.forEach((id) => {
       const normalized = normalizeUtteranceId((id || '').trim());
-      const match = normalized.match(/:(\d+)$/);
+      const match = normalized.match(/:(\d+)(?:_\d+)?$/);
       if (!match) return;
       const seconds = match[1];
       suffixCounts.set(seconds, (suffixCounts.get(seconds) || 0) + 1);
     });
     linkIds.forEach((id, i) => {
       const normalized = normalizeUtteranceId((id || '').trim());
-      const match = normalized.match(/:(\d+)$/);
+      const match = normalized.match(/:(\d+)(?:_\d+)?$/);
       if (!match) return;
       const seconds = match[1];
       if ((suffixCounts.get(seconds) || 0) !== 1) return;
@@ -369,7 +369,8 @@ function MarkdownMessage({
       if (secondsMatch) {
         const seconds = secondsMatch[1];
         const candidates = document.querySelectorAll<HTMLElement>(`[id^="src-${messageId}-"]`);
-        el = Array.from(candidates).find((node) => node.id.endsWith(`:${seconds}`)) || null;
+        const suffixRe = new RegExp(`:${seconds}(?:_\\d+)?$`);
+        el = Array.from(candidates).find((node) => suffixRe.test(node.id)) || null;
       }
     }
 
