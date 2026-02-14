@@ -111,6 +111,23 @@ def test_merge_cite_utterance_ids_should_resolve_utt_seconds_to_unique_known_id(
     assert got == ["AEOFDga2dh8:10848"]
 
 
+def test_merge_cite_utterance_ids_should_resolve_unique_seconds_with_suffix_ids() -> None:
+    retrieval = {
+        "citations": [
+            {"utterance_id": "AEOFDga2dh8:10848_2"},
+            {"utterance_id": "otherVid:220"},
+        ]
+    }
+
+    got = _merge_cite_utterance_ids(
+        answer="Education Bill [cite](#src:utt_10848)",
+        cite_utterance_ids=[],
+        retrieval=retrieval,
+    )
+
+    assert got == ["AEOFDga2dh8:10848_2"]
+
+
 def test_merge_cite_utterance_ids_should_keep_well_formed_unknown_ids_for_db_fallback() -> None:
     retrieval = {
         "citations": [

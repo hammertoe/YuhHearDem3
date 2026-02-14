@@ -114,7 +114,7 @@ def _looks_like_utterance_id(citation_id: str) -> bool:
         return False
     if normalized.startswith("utt_"):
         normalized = normalized[4:]
-    return re.match(r"^[A-Za-z0-9_-]+:\d+$", normalized) is not None
+    return re.match(r"^[A-Za-z0-9_-]+:\d+(?:_\d+)?$", normalized) is not None
 
 
 def _merge_cite_utterance_ids(
@@ -136,7 +136,7 @@ def _merge_cite_utterance_ids(
 
     suffix_counts: dict[str, int] = {}
     for known_id in known_ids:
-        match = re.search(r":(\d+)$", known_id)
+        match = re.search(r":(\d+)(?:_\d+)?$", known_id)
         if not match:
             continue
         seconds = match.group(1)
@@ -166,7 +166,7 @@ def _merge_cite_utterance_ids(
                             (
                                 known_id
                                 for known_id in known_ids
-                                if known_id.endswith(f":{seconds}")
+                                if re.search(rf":{re.escape(seconds)}(?:_\d+)?$", known_id)
                             ),
                             None,
                         )

@@ -5,7 +5,7 @@ from typing import Any
 
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
-from lib.id_generators import generate_entity_id
+from lib.id_generators import generate_bill_id, generate_entity_id
 from lib.roles import infer_role_kind, normalize_person_name, normalize_role_label
 from lib.processors.paragraph_splitter import (
     group_transcripts_into_paragraphs,
@@ -61,9 +61,11 @@ class TranscriptIngestor:
         speakers = transcript_data.get("speakers", []) or []
         for s in speakers:
             self._upsert_speaker(s)
-            self._upsert_speaker_video_roles_for_video(
-                s, youtube_video_id=youtube_video_id
-            )
+            self._upsert_speaker_video_roles_for_video(s, youtube_video_id=youtube_video_id)
+
+        legislation = transcript_data.get("legislation", []) or []
+        for item in legislation:
+            self._upsert_bill_from_legislation(item)
 
         transcripts = transcript_data.get("transcripts", []) or []
         paragraphs = group_transcripts_into_paragraphs(youtube_video_id, transcripts)
@@ -71,26 +73,24 @@ class TranscriptIngestor:
 
         paragraph_embeddings: list[list[float]] = []
         if embed_paragraphs and paragraph_texts:
-            paragraph_embeddings = self.embedding_client.generate_embeddings_batch(
-                paragraph_texts
-            )
+            paragraph_embeddings = self.embedding_client.generate_embeddings_batch(paragraph_texts)
 
         sentence_entities_count = 0
         paragraph_entities_count = 0
         entity_ids_seen: set[str] = set()
         entity_texts_by_id: dict[str, tuple[str, str]] = {}
+        used_sentence_ids: set[str] = set()
 
         for idx, paragraph in enumerate(paragraphs):
             emb = paragraph_embeddings[idx] if idx < len(paragraph_embeddings) else None
-            self._insert_paragraph(
-                paragraph, title=title, upload_date=upload_date, embedding=emb
-            )
+            self._insert_paragraph(paragraph, title=title, upload_date=upload_date, embedding=emb)
 
             sentences = split_paragraph_into_sentences(
                 paragraph,
                 youtube_video_id=youtube_video_id,
                 video_date=upload_date,
                 video_title=title,
+                existing_sentence_ids=used_sentence_ids,
             )
             paragraph_entity_ids: set[str] = set()
 
@@ -391,6 +391,37 @@ class TranscriptIngestor:
             ),
         )
 
+    def _upsert_bill_from_legislation(self, legislation_item: dict[str, Any]) -> None:
+        bill_name = str(legislation_item.get("name") or "").strip()
+        if not bill_name:
+            return
+
+        bill_id_raw = str(legislation_item.get("id") or "").strip()
+        bill_id = bill_id_raw or generate_bill_id(bill_name)
+        description = str(legislation_item.get("description") or "").strip()
+        source = str(legislation_item.get("source") or "").strip()
+
+        self.postgres.execute_update(
+            """
+            INSERT INTO bills (id, bill_number, title, description, status, source_text)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                bill_number = EXCLUDED.bill_number,
+                title = EXCLUDED.title,
+                description = EXCLUDED.description,
+                source_text = EXCLUDED.source_text,
+                updated_at = NOW()
+            """,
+            (
+                bill_id,
+                bill_name,
+                bill_name,
+                description,
+                "",
+                source,
+            ),
+        )
+
     def _extract_entities_from_text(self, text: str) -> list[tuple[str, str]]:
         return []
 
@@ -407,9 +438,7 @@ class TranscriptIngestor:
             (entity_id, text, entity_type),
         )
 
-    def _insert_sentence_entity(
-        self, sentence_id: str, entity_id: str, entity_type: str
-    ) -> None:
+    def _insert_sentence_entity(self, sentence_id: str, entity_id: str, entity_type: str) -> None:
         self.postgres.execute_update(
             """
             INSERT INTO sentence_entities (sentence_id, entity_id, entity_type, relationship_type)

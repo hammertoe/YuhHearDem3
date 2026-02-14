@@ -91,7 +91,7 @@ VIDEO_TRANSCRIPTION_PROMPT = f"""
 - Date: {{video_date}}
 
 **Known Speakers (from previous segments)**
-Use these speaker IDs and names if you recognize the same person:
+Use these stable speaker IDs and names if you recognize the same person (voice IDs can change by segment):
 {{known_speakers_context}}
 
 **Previous Context (last 5 sentences)**
@@ -127,6 +127,7 @@ class Transcript(pydantic.BaseModel):
     start: str
     text: str
     voice: int
+    speaker_id: str | None = None
 
 
 class Legislation(pydantic.BaseModel):
@@ -212,9 +213,7 @@ def get_video_duration(video: Video) -> timedelta | None:
         return None
 
     h_str, m_str, s_str = match.groups()
-    return timedelta(
-        hours=int(h_str or 0), minutes=int(m_str or 0), seconds=int(s_str or 0)
-    )
+    return timedelta(hours=int(h_str or 0), minutes=int(m_str or 0), seconds=int(s_str or 0))
 
 
 def generate_speaker_id(name: str, existing_ids: dict[str, dict]) -> str:
@@ -256,18 +255,59 @@ def generate_legislation_id(name: str, existing_ids: set[str]) -> str:
     return f"{base_id}_{counter}"
 
 
-def format_known_speakers(known_speakers: dict) -> str:
+def format_known_speakers(known_speakers_by_id: dict[str, dict]) -> str:
     """Format known speakers for prompt context."""
-    if not known_speakers:
+    if not known_speakers_by_id:
         return "No previous speakers identified."
 
     lines = []
-    for voice_id, speaker_data in known_speakers.items():
-        lines.append(
-            f"- Voice {voice_id}: {speaker_data['name']} -> {speaker_data['speaker_id']}"
-        )
+    for speaker_id, speaker_data in known_speakers_by_id.items():
+        lines.append(f"- {speaker_id}: {speaker_data['name']}")
 
     return "\n".join(lines)
+
+
+def resolve_segment_speaker_mapping(
+    segment_speakers: list[SpeakerEnhanced],
+    known_speakers_by_id: dict[str, dict],
+) -> tuple[dict[int, str], dict[str, int]]:
+    """Resolve segment-local voice IDs to stable cross-segment speaker IDs."""
+    voice_to_speaker_id: dict[int, str] = {}
+    speaker_voice_samples: dict[str, int] = {}
+
+    for speaker in segment_speakers:
+        best_match_id = None
+        best_score = 0
+        speaker_name_lc = speaker.name.lower()
+
+        for known_speaker_id, known_data in known_speakers_by_id.items():
+            known_name = str(known_data.get("name", "")).lower()
+            if not known_name:
+                continue
+            score = fuzz.ratio(speaker_name_lc, known_name)
+            if score > best_score:
+                best_score = score
+                best_match_id = known_speaker_id
+
+        if best_match_id and best_score > 80:
+            speaker_id = best_match_id
+        else:
+            speaker_id = generate_speaker_id(
+                speaker.name,
+                {sid: data for sid, data in known_speakers_by_id.items() if data.get("name")},
+            )
+
+        speaker.speaker_id = speaker_id
+        known_speakers_by_id[speaker_id] = {
+            "name": speaker.name,
+            "position": speaker.position,
+            "role_in_video": speaker.role_in_video,
+            "speaker_id": speaker_id,
+        }
+        voice_to_speaker_id[speaker.voice] = speaker_id
+        speaker_voice_samples[speaker_id] = speaker.voice
+
+    return voice_to_speaker_id, speaker_voice_samples
 
 
 def get_previous_context(transcripts: list[Transcript], count: int = 5) -> str:
@@ -443,16 +483,17 @@ def print_combined_results(results: dict):
     print("=" * 80)
 
     for t in results["transcripts"]:
-        speaker = results["speakers"].get(t.voice, {})
-        speaker_id = speaker.get("speaker_id", f"Voice_{t.voice}")
+        speaker_id = t.speaker_id or f"Voice_{t.voice}"
         print(f"[{t.start}] {speaker_id}: {t.text}")
 
     print("\n" + "=" * 80)
     print(f"SPEAKER REFERENCES ({len(results['speakers'])} speakers)")
     print("=" * 80)
-    for voice_id, info in results["speakers"].items():
-        print(f"\n{info['speaker_id']}:")
-        print(f"  Voice ID: {voice_id}")
+    for speaker_id, info in results["speakers"].items():
+        sample_voice_id = results.get("speaker_voice_samples", {}).get(speaker_id)
+        print(f"\n{speaker_id}:")
+        if sample_voice_id is not None:
+            print(f"  Example Voice ID: {sample_voice_id}")
         print(f"  Name: {info['name']}")
         print(f"  Position: {info.get('position', NOT_FOUND)}")
         print(f"  Role: {info.get('role_in_video', NOT_FOUND)}")
@@ -490,19 +531,19 @@ def save_results_to_json(results: dict, output_file: str):
                 "start": t.start,
                 "text": t.text,
                 "voice_id": t.voice,
-                "speaker_id": results["speakers"].get(t.voice, {}).get("speaker_id"),
+                "speaker_id": t.speaker_id,
             }
             for t in results["transcripts"]
         ],
         "speakers": [
             {
-                "speaker_id": data["speaker_id"],
-                "voice_id": voice_id,
+                "speaker_id": speaker_id,
+                "voice_id": results.get("speaker_voice_samples", {}).get(speaker_id),
                 "name": data["name"],
                 "position": data.get("position", NOT_FOUND),
                 "role_in_video": data.get("role_in_video", NOT_FOUND),
             }
-            for voice_id, data in results["speakers"].items()
+            for speaker_id, data in results["speakers"].items()
         ],
         "legislation": [
             {
@@ -607,7 +648,8 @@ def process_video_iteratively(
     total_duration = video_metadata.duration
     segment_start = timedelta(minutes=start_minutes)
     all_transcripts = []
-    known_speakers = {}
+    known_speakers_by_id = {}
+    speaker_voice_samples = {}
     all_legislation = []
     segment_num = 0
 
@@ -625,16 +667,14 @@ def process_video_iteratively(
             print(f"🛑 Reached max segments limit: {max_segments}")
             break
 
-        segment_end = min(
-            segment_start + timedelta(minutes=segment_duration), total_duration
-        )
+        segment_end = min(segment_start + timedelta(minutes=segment_duration), total_duration)
 
         print(f"\n{'─' * 80}")
         print(f"Segment {segment_num + 1}")
         print(f"Time: {segment_start} - {segment_end}")
         print(f"{'─' * 80}\n")
 
-        known_speakers_context = format_known_speakers(known_speakers)
+        known_speakers_context = format_known_speakers(known_speakers_by_id)
         recent_context = get_previous_context(all_transcripts, 5)
 
         result = None
@@ -669,39 +709,14 @@ def process_video_iteratively(
                 result.task1_transcripts, overlap_start, overlap_end
             )
 
-        known_by_name = {}
-        for voice_id, speaker_data in known_speakers.items():
-            speaker_name = speaker_data["name"].lower()
-            if speaker_name not in known_by_name:
-                known_by_name[speaker_name] = []
-            known_by_name[speaker_name].append((voice_id, speaker_data))
+        voice_to_speaker_id, segment_voice_samples = resolve_segment_speaker_mapping(
+            result.task2_speakers,
+            known_speakers_by_id,
+        )
+        speaker_voice_samples.update(segment_voice_samples)
 
-        matched_speakers = {}
-        for speaker in result.task2_speakers:
-            matched = False
-            for known_name, speaker_list in known_by_name.items():
-                name_similarity = fuzz.ratio(speaker.name.lower(), known_name)
-                if name_similarity > 80:
-                    matched_speakers[speaker.voice] = speaker_list[0][1]
-                    matched = True
-                    break
-
-            if not matched:
-                speaker_id = generate_speaker_id(
-                    speaker.name,
-                    {v: d for v, d in known_speakers.items() if d.get("name")},
-                )
-                speaker.speaker_id = speaker_id
-                known_speakers[speaker.voice] = {
-                    "name": speaker.name,
-                    "position": speaker.position,
-                    "role_in_video": speaker.role_in_video,
-                    "speaker_id": speaker_id,
-                }
-
-        for speaker in result.task2_speakers:
-            if speaker.voice in matched_speakers:
-                speaker.speaker_id = matched_speakers[speaker.voice]["speaker_id"]
+        for transcript in result.task1_transcripts:
+            transcript.speaker_id = voice_to_speaker_id.get(transcript.voice)
 
         existing_leg_ids = {leg_item.id for leg_item in all_legislation}
         for leg in result.task3_legislation:
@@ -726,7 +741,8 @@ def process_video_iteratively(
 
     return {
         "transcripts": all_transcripts,
-        "speakers": known_speakers,
+        "speakers": known_speakers_by_id,
+        "speaker_voice_samples": speaker_voice_samples,
         "legislation": all_legislation,
         "video_metadata": video_metadata,
     }

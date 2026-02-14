@@ -119,6 +119,7 @@ def migrate_paragraphs_and_sentences(
 
     paragraph_texts = [p.get_text() for p in paragraphs]
     paragraph_embeddings = embedding_client.generate_embeddings_batch(paragraph_texts)
+    used_sentence_ids: set[str] = set()
 
     for i, paragraph in enumerate(paragraphs):
         embedding = paragraph_embeddings[i]
@@ -152,7 +153,13 @@ def migrate_paragraphs_and_sentences(
         )
 
     for paragraph in paragraphs:
-        sentences = split_paragraph_into_sentences(paragraph, video_id, video_date, video_title)
+        sentences = split_paragraph_into_sentences(
+            paragraph,
+            video_id,
+            video_date,
+            video_title,
+            existing_sentence_ids=used_sentence_ids,
+        )
 
         for sentence in sentences:
             postgres_client.execute_update(

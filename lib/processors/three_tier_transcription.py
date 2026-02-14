@@ -37,6 +37,7 @@ class ThreeTierTranscriptionProcessor:
             "speakers": self._extract_speakers(transcripts),
             "legislation": self._extract_legislation(transcripts),
         }
+        used_sentence_ids: set[str] = set()
 
         for paragraph in paragraphs:
             para_dict = paragraph.to_dict()
@@ -48,16 +49,18 @@ class ThreeTierTranscriptionProcessor:
             three_tier_data["paragraphs"].append(para_dict)
 
             sentences = split_paragraph_into_sentences(
-                paragraph, youtube_video_id, video_date, video_title
+                paragraph,
+                youtube_video_id,
+                video_date,
+                video_title,
+                existing_sentence_ids=used_sentence_ids,
             )
 
             three_tier_data["sentences"].extend(sentences)
 
         return three_tier_data
 
-    def _extract_speakers(
-        self, transcripts: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def _extract_speakers(self, transcripts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Extract unique speakers from transcripts."""
         speakers_map: dict[str, dict[str, Any]] = {}
 
@@ -91,9 +94,7 @@ class ThreeTierTranscriptionProcessor:
         speakers_list = list(speakers_map.values())
         return sorted(speakers_list, key=lambda x: x.get("first_appearance", ""))
 
-    def _extract_legislation(
-        self, transcripts: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def _extract_legislation(self, transcripts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Extract legislation mentions from transcripts."""
         leg_map: dict[str, dict[str, Any]] = {}
 
@@ -122,9 +123,7 @@ class ThreeTierTranscriptionProcessor:
                         }
                     leg_map[name]["mentions"] += 1
 
-        legislation_list = sorted(
-            leg_map.values(), key=lambda x: x["mentions"], reverse=True
-        )
+        legislation_list = sorted(leg_map.values(), key=lambda x: x["mentions"], reverse=True)
 
         return legislation_list
 

@@ -83,13 +83,21 @@ def split_paragraph_into_sentences(
     youtube_video_id: str,
     video_date: str | None = None,
     video_title: str | None = None,
+    existing_sentence_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Split a paragraph into individual sentences with IDs."""
     sentences = []
+    seen_ids = existing_sentence_ids if existing_sentence_ids is not None else set()
 
     for i, entry in enumerate(paragraph.sentences):
         start_seconds = parse_timestamp_to_seconds(entry["start"])
-        sentence_id = f"{youtube_video_id}:{start_seconds}"
+        base_sentence_id = f"{youtube_video_id}:{start_seconds}"
+        sentence_id = base_sentence_id
+        suffix = 2
+        while sentence_id in seen_ids:
+            sentence_id = f"{base_sentence_id}_{suffix}"
+            suffix += 1
+        seen_ids.add(sentence_id)
 
         sentences.append(
             {

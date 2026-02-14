@@ -115,6 +115,31 @@ def test_split_paragraph_to_sentences(sample_transcripts):
     print("✅ Paragraph to sentence splitting works")
 
 
+def test_split_paragraph_to_sentences_should_avoid_id_collisions_for_same_second():
+    """Sentence IDs should be unique even when timestamps collide."""
+    transcripts = [
+        {
+            "start": "00:00:10",
+            "text": "First sentence at second ten.",
+            "voice_id": 1,
+            "speaker_id": "s_speaker_1",
+        },
+        {
+            "start": "00:00:10",
+            "text": "Second sentence also at second ten.",
+            "voice_id": 1,
+            "speaker_id": "s_speaker_1",
+        },
+    ]
+
+    paragraphs = group_transcripts_into_paragraphs("video123", transcripts)
+    sentences = split_paragraph_into_sentences(paragraphs[0], "video123")
+
+    assert len(sentences) == 2
+    assert sentences[0]["id"] == "video123:10"
+    assert sentences[1]["id"] == "video123:10_2"
+
+
 def test_empty_transcripts():
     """Test handling of empty transcript list."""
     paragraphs = group_transcripts_into_paragraphs("Syxyah7QIaM", [])

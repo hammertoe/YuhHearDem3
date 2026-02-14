@@ -86,5 +86,54 @@ def test_transcript_ingestor_upserts_speaker_video_roles() -> None:
 
     ingestor.ingest_transcript_json(transcript_data, youtube_video_id="test_video")
 
-    query = postgres.execute_update.call_args_list[2][0][0]
-    assert "INSERT INTO speaker_video_roles" in query
+    role_queries = [
+        call.args[0]
+        for call in postgres.execute_update.call_args_list
+        if "INSERT INTO speaker_video_roles" in call.args[0]
+    ]
+    assert len(role_queries) >= 1
+
+
+def test_transcript_ingestor_should_upsert_legislation_into_bills() -> None:
+    postgres = Mock()
+    embeddings = Mock()
+    embeddings.generate_embeddings_batch.return_value = [[0.0] * 768]
+
+    ingestor = TranscriptIngestor(
+        postgres=postgres,
+        embedding_client=embeddings,
+    )
+
+    transcript_data = {
+        "video_metadata": {
+            "title": "Test Video",
+            "upload_date": "20260106",
+            "duration": "0:01:00",
+        },
+        "speakers": [],
+        "transcripts": [
+            {
+                "start": "00:00:10",
+                "text": "The Road Traffic Bill is important.",
+                "voice_id": 1,
+                "speaker_id": "s_speaker_1",
+            }
+        ],
+        "legislation": [
+            {
+                "id": "L_ROAD_TRAFFIC_BILL_1",
+                "name": "Road Traffic Bill",
+                "description": "Modernizes road traffic penalties",
+                "source": "audio",
+            }
+        ],
+    }
+
+    ingestor.ingest_transcript_json(transcript_data, youtube_video_id="test_video")
+
+    bill_queries = [
+        call.args[0]
+        for call in postgres.execute_update.call_args_list
+        if "INSERT INTO bills" in call.args[0]
+    ]
+    assert len(bill_queries) == 1
