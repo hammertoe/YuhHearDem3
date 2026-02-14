@@ -1,0 +1,79 @@
+# Pre-commit hooks configuration for YuhHearDem3
+# See https://pre-commit.com for more information
+
+default_language_version:
+  python: python3.12
+
+repos:
+  # General pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # File format checks
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+        exclude: ^tests/fixtures/
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+      # Python-specific checks
+      - id: check-ast
+      - id: check-docstring-first
+      - id: debug-statements
+      - id: check-builtin-literals
+      - id: name-tests-test
+        args: [--pytest-test-first]
+
+  # Ruff - Fast Python linter and formatter (replaces flake8, pylint, black, isort)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # Run the linter
+      - id: ruff
+        types: [python]
+        args: [--fix, --exit-non-zero-on-fix]
+      # Run the formatter (replaces black)
+      - id: ruff-format
+        types: [python]
+
+  # mypy - Static type checking (disabled - many pre-existing type issues)
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.13.0
+  #   hooks:
+  #     - id: mypy
+  #       additional_dependencies:
+  #         - types-beautifulsoup4
+  #         - types-lxml
+  #         - types-PyYAML
+  #       args: [--ignore-missing-imports, --no-strict-optional]
+  #       exclude: (^tests/|/tests/)
+
+  # pyupgrade - Automatically upgrade syntax for newer Python versions
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.19.0
+    hooks:
+      - id: pyupgrade
+        args: [--py312-plus]
+
+  # bandit - Security linter (skipped - many false positives for this codebase)
+  # - repo: https://github.com/PyCQA/bandit
+  #   rev: 1.7.10
+  #   hooks:
+  #     - id: bandit
+  #       args: [-c, pyproject.toml, "-x", "tests/"]
+  #       additional_dependencies: ["bandit[toml]"]
+
+  # markdownlint - Markdown linter (skipped - many pre-existing formatting issues)
+  # - repo: https://github.com/igorshubovych/markdownlint-cli
+  #   rev: v0.43.0
+  #   hooks:
+  #     - id: markdownlint
+  #       args: [--fix]
