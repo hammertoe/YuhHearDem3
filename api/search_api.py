@@ -2,23 +2,17 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
-from google import genai
-from google.genai import types
+from pydantic import BaseModel
 
 from lib.db.postgres_client import PostgresClient
 from lib.db.chat_schema import ensure_chat_schema
 from lib.chat_agent_v2 import KGChatAgentV2
-from lib.kg_agent_loop import KGAgentLoop
-from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
 from lib.advanced_search_features import AdvancedSearchFeatures
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.utils.config import config
@@ -183,17 +177,25 @@ class ChatCitation(BaseModel):
 
 
 class ChatSource(BaseModel):
-    utterance_id: str
-    youtube_video_id: str
-    youtube_url: str
-    seconds_since_start: int
-    timestamp_str: str
-    speaker_id: str
-    speaker_name: str
+    source_kind: str = "utterance"
+    citation_id: str | None = None
+    utterance_id: str = ""
+    youtube_video_id: str = ""
+    youtube_url: str = ""
+    seconds_since_start: int = 0
+    timestamp_str: str = ""
+    speaker_id: str = ""
+    speaker_name: str = ""
     speaker_title: str | None = None
-    text: str
-    video_title: str | None
-    video_date: str | None
+    text: str = ""
+    video_title: str | None = None
+    video_date: str | None = None
+    bill_id: str | None = None
+    bill_number: str | None = None
+    bill_title: str | None = None
+    excerpt: str | None = None
+    source_url: str | None = None
+    chunk_index: int | None = None
 
 
 class ChatFocusNode(BaseModel):

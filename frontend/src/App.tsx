@@ -43,9 +43,16 @@ function extractSources(metadata: unknown): ChatSource[] {
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
     const source = item as Record<string, unknown>;
+    const sourceKind = String(source.source_kind || 'utterance').trim() as
+      | 'utterance'
+      | 'bill_excerpt';
     const utteranceId = String(source.utterance_id || '').trim();
-    if (!utteranceId) continue;
+    const citationId = String(source.citation_id || '').trim();
+    const billId = String(source.bill_id || '').trim();
+    if (!utteranceId && !citationId && !billId) continue;
     out.push({
+      source_kind: sourceKind,
+      citation_id: citationId || null,
       utterance_id: utteranceId,
       youtube_video_id: String(source.youtube_video_id || ''),
       youtube_url: String(source.youtube_url || ''),
@@ -57,9 +64,25 @@ function extractSources(metadata: unknown): ChatSource[] {
       text: String(source.text || ''),
       video_title: source.video_title ? String(source.video_title) : null,
       video_date: source.video_date ? String(source.video_date) : null,
+      bill_id: billId || null,
+      bill_number: source.bill_number ? String(source.bill_number) : null,
+      bill_title: source.bill_title ? String(source.bill_title) : null,
+      excerpt: source.excerpt ? String(source.excerpt) : null,
+      source_url: source.source_url ? String(source.source_url) : null,
+      chunk_index: typeof source.chunk_index === 'number' ? source.chunk_index : null,
     });
   }
   return out;
+}
+
+function sourceId(s: ChatSource): string {
+  if (s.source_kind === 'bill_excerpt') {
+    return (
+      (s.citation_id || '').trim() ||
+      `bill:${(s.bill_id || '').trim()}:${Number(s.chunk_index || 0)}`
+    );
+  }
+  return (s.utterance_id || '').trim();
 }
 
 function extractFollowupQuestions(metadata: unknown): string[] {
@@ -153,8 +176,10 @@ function normalizeUtteranceId(id: string): string {
   raw = raw.replace(/^https?:\/\/[^#]+#/i, '');
   raw = raw.replace(/^#?src:/i, '');
   raw = raw.replace(/^source:/i, '');
-  raw = raw.replace(/^utt_/i, '');
-  raw = raw.replace(/[\]\[),.;:]+$/g, '');
+  if (!raw.startsWith('bill:')) {
+    raw = raw.replace(/^utt_/i, '');
+  }
+  raw = raw.replace(/[\]\[),.;]+$/g, '');
   return raw.trim();
 }
 
@@ -268,7 +293,7 @@ function MarkdownMessage({
       ids.push(raw);
     };
 
-    (sources || []).forEach((s) => add(s.utterance_id));
+    (sources || []).forEach((s) => add(sourceId(s)));
     inlineLinkIds.forEach(add);
 
     // Fallback for older messages that have citation IDs but no sources in metadata.
@@ -449,7 +474,7 @@ function App() {
         console.error('[Initial Load] Error loading thread:', _e);
         setConnected(false);
         console.warn('[Initial Load] Clearing stale thread ID and creating fresh thread...');
-        
+
         try {
           const fresh = await createThread(null);
           localStorage.setItem('yhd_thread_id', fresh.thread_id);
@@ -471,7 +496,7 @@ function App() {
     setMessages([]);
     setInput('');
     setConnected(true);
-    
+
     try {
       const created = await createThread(null);
       console.log('[Clear Chat] New thread created:', created);
@@ -653,25 +678,33 @@ function App() {
                           </div>
                           <div className="mt-2 space-y-2">
                             {m.sources.map((s) => (
+                              (() => {
+                                const sid = sourceId(s);
+                                const normalizedSid = normalizeUtteranceId(sid);
+                                const isBill = s.source_kind === 'bill_excerpt';
+                                const href = isBill ? (s.source_url || '#') : s.youtube_url;
+                                return (
                               <a
-                                key={s.utterance_id}
-                                id={`src-${m.id}-${normalizeUtteranceId(s.utterance_id)}`}
-                                href={s.youtube_url}
+                                key={sid}
+                                id={`src-${m.id}-${normalizedSid}`}
+                                href={href}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="source-card"
                               >
                                 <div className="flex items-start gap-3">
-                                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-red-600 text-white">
-                                    <YouTubeIcon className="h-3 w-3" />
+                                  <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded text-white ${isBill ? 'bg-[#00267F]' : 'bg-red-600'}`}>
+                                    {isBill ? <span className="text-[10px] font-bold">PDF</span> : <YouTubeIcon className="h-3 w-3" />}
                                   </div>
 
                                   <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                                       <span className="text-sm font-bold font-display text-[#00267F]">
-                                        {formatSpeakerName(s)}
+                                        {isBill
+                                          ? (s.bill_title || s.bill_number || 'Bill excerpt')
+                                          : formatSpeakerName(s)}
                                       </span>
-                                      {formatSpeakerTitle(s) && (
+                                      {!isBill && formatSpeakerTitle(s) && (
                                         <span className="text-xs text-ink/60 font-accent">
                                           {formatSpeakerTitle(s)}
                                         </span>
@@ -679,20 +712,23 @@ function App() {
                                     </div>
 
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink/60 font-accent">
-                                      {s.video_title && (
+                                      {!isBill && s.video_title && (
                                         <span className="source-title">{s.video_title}</span>
                                       )}
-                                      {s.timestamp_str && (
+                                      {!isBill && s.timestamp_str && (
                                         <span className="source-pill">@ {s.timestamp_str}</span>
                                       )}
+                                      {isBill && <span className="source-pill">Bill PDF</span>}
                                     </div>
 
                                     <div className="mt-1 text-xs text-ink/80 source-snippet font-accent">
-                                      <em>&ldquo;{s.text}&rdquo;</em>
+                                      <em>&ldquo;{(isBill ? s.excerpt : s.text) || s.text}&rdquo;</em>
                                     </div>
                                   </div>
                                 </div>
                               </a>
+                                );
+                              })()
                             ))}
                           </div>
                         </div>

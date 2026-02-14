@@ -10,7 +10,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
+from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag_with_bills as kg_hybrid_graph_rag
 from lib.utils.config import config
 
 
@@ -540,17 +540,19 @@ class KGAgentLoop:
             "Keep a lightly Caribbean (Bajan) tone - warm and plainspoken, not cheesy.\n\n"
             "You MUST ground everything in retrieved evidence from knowledge graph and transcript utterances.\n\n"
             "Rules:\n"
-            "- Before answering, call the tool `kg_hybrid_graph_rag` to retrieve a compact subgraph + citations.\n"
+            "- Before answering, call the tool `kg_hybrid_graph_rag` to retrieve a compact subgraph + citations, including bill excerpts for legislation questions.\n"
             "- Construct the `query` parameter using CONCISE KEYWORDS separated by spaces, NOT natural language questions.\n"
             "  Examples:\n"
             '    ✅ "Barbados Water Authority BWA water scarcity drought infrastructure"\n'
             '    ✅ "housing development christ church vesting resolution"\n'
+            '    ✅ "Road Traffic Bill amendment penalties clause"\n'
             '    ❌ "What did ministers say about water management?"\n'
             "- Include key entity names and important concepts (3-10 terms max, keep under 15 words).\n"
             "- Use ONLY the tool results as your source of truth. Do not invent facts.\n"
-            "- Interpret the tool results: use `edges` + `nodes` to explain relationships (who/what connects to what, agreements/disagreements, proposals, responsibilities) in plain language.\n"
+            "- Interpret the tool results: use `edges` + `nodes` + `bill_citations` to explain relationships (who/what connects to what, agreements/disagreements, proposals, responsibilities) in plain language.\n"
+            "- For questions about bills, legislation, or clauses, prefer citing bill excerpts from `bill_citations` when available using format `[cite](#src:bill:<bill_id>:<chunk_index>)`.\n"
             "- Prefer quoting MPs directly when citations are available; use markdown blockquotes and put the quoted sentence in *italics*.\n"
-            "- Add visible inline citations in the answer body using markdown links like `[1](#src:utt_123)` or `[cite](#src:utt_123)` immediately after the sentence/quote they support.\n"
+            "- Add visible inline citations in the answer body using markdown links like `[1](#src:utt_123)` or `[cite](#src:utt_123)` for transcript citations, or `[cite](#src:bill:<bill_id>:<chunk_index>)` for bill citations.\n"
             "- Use only utterance_ids that appear in tool citations.\n"
             "- Use short section headings for main themes using markdown like `### The Climate Change Clash`.\n"
             "- Do NOT include a section called 'Key connections' and do NOT show technical arrow notation like `A -> PREDICATE -> B`.\n"
@@ -571,6 +573,7 @@ class KGAgentLoop:
                 "seed_k": {"type": "integer", "default": 12},
                 "max_edges": {"type": "integer", "default": 90},
                 "max_citations": {"type": "integer", "default": 12},
+                "max_bill_citations": {"type": "integer", "default": 8},
                 "edge_rank_threshold": {"type": "number"},
             },
             "required": ["query"],
@@ -580,6 +583,7 @@ class KGAgentLoop:
             description=(
                 "Hybrid Graph-RAG: vector/fulltext seed search over kg_nodes, then expand kg_edges N hops "
                 "and return a compact subgraph plus provenance citations with youtube timecoded URLs. "
+                "Also retrieves bill excerpt citations for legislation questions. "
                 "Use edge_rank_threshold to filter low-quality edges (0.05 recommended after normalization)."
             ),
             parameters_json_schema=tool_schema,
@@ -741,6 +745,7 @@ class KGAgentLoop:
                         seed_k=int(fc.args.get("seed_k", 12)),
                         max_edges=int(fc.args.get("max_edges", 90)),
                         max_citations=int(fc.args.get("max_citations", 12)),
+                        max_bill_citations=int(fc.args.get("max_bill_citations", 8)),
                         edge_rank_threshold=float(fc.args.get("edge_rank_threshold"))
                         if fc.args.get("edge_rank_threshold") is not None
                         else None,

@@ -626,3 +626,144 @@ def kg_hybrid_graph_rag(
         "citations": citations,
         "debug": debug_info,
     }
+
+
+def _retrieve_bill_excerpts(
+    *,
+    postgres: Any,
+    embedding_client: Any,
+    query: str,
+    seed_bill_ids: list[str] | None = None,
+    max_bill_citations: int = 8,
+) -> list[dict[str, Any]]:
+    """Retrieve bill excerpts matching the query using hybrid vector + BM25 search.
+
+    Args:
+        postgres: Database client
+        embedding_client: Embedding generation client
+        query: Search query
+        seed_bill_ids: Optional list of bill IDs to boost in results
+        max_bill_citations: Maximum number of bill excerpts to return
+
+    Returns:
+        List of bill excerpt citations with bill metadata
+    """
+    if not query or not query.strip():
+        return []
+
+    try:
+        query_embedding = embedding_client.generate_query_embedding(query)
+    except Exception:
+        return []
+
+    seed_bill_set = set(seed_bill_ids or [])
+    boost_clause = ""
+    boost_params: list[Any] = []
+    if seed_bill_set:
+        boost_clause = ", CASE WHEN be.bill_id IN ({}) THEN 0.1 ELSE 0.0 END AS bill_boost".format(
+            ",".join(["%s"] * len(seed_bill_set))
+        )
+        boost_params = list(seed_bill_set)
+
+    sql = f"""
+        SELECT be.id, be.bill_id, be.chunk_index, be.text, be.source_url,
+               be.embedding <=> (%s::vector) AS distance,
+               b.bill_number, b.title{boost_clause}
+        FROM bill_excerpts be
+        JOIN bills b ON be.bill_id = b.id
+        WHERE be.embedding IS NOT NULL
+        ORDER BY distance ASC, be.chunk_index ASC
+        LIMIT %s
+    """
+
+    try:
+        params = [vector_literal(query_embedding)] + boost_params + [max_bill_citations]
+        rows = postgres.execute_query(sql, params)
+    except Exception:
+        rows = []
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        distance = float(row[5] or 1.0)
+        score = 1.0 - distance
+
+        boost = float(row[8]) if len(row) > 8 and row[8] is not None else 0.0
+        score = score + boost
+
+        bill_id = row[1]
+        citation_id = f"bill:{bill_id}:{row[2]}"
+
+        out.append(
+            {
+                "citation_id": citation_id,
+                "bill_id": bill_id,
+                "bill_number": row[6] or "",
+                "bill_title": row[7] if len(row) > 7 else "",
+                "excerpt": row[3] or "",
+                "source_url": row[4] or "",
+                "chunk_index": row[2],
+                "score": score,
+            }
+        )
+
+    return out
+
+
+def kg_hybrid_graph_rag_with_bills(
+    *,
+    postgres: Any,
+    embedding_client: Any,
+    query: str,
+    hops: int = 1,
+    seed_k: int = 12,
+    max_edges: int = 90,
+    max_citations: int = 12,
+    max_bill_citations: int = 8,
+    edge_rank_threshold: float | None = None,
+) -> dict[str, Any]:
+    """Hybrid Graph-RAG with bill excerpt retrieval.
+
+    Extends kg_hybrid_graph_rag to include bill excerpt citations.
+
+    Args:
+        postgres: Database client
+        embedding_client: Embedding generation client
+        query: Search query
+        hops: Number of graph hops to expand
+        seed_k: Number of seed nodes to retrieve
+        max_edges: Maximum edges to return
+        max_citations: Maximum transcript citations to return
+        max_bill_citations: Maximum bill excerpt citations to return
+        edge_rank_threshold: Optional threshold to filter edges
+
+    Returns:
+        Dict with seeds, nodes, edges, citations, and bill_citations
+    """
+    result = kg_hybrid_graph_rag(
+        postgres=postgres,
+        embedding_client=embedding_client,
+        query=query,
+        hops=hops,
+        seed_k=seed_k,
+        max_edges=max_edges,
+        max_citations=max_citations,
+        edge_rank_threshold=edge_rank_threshold,
+    )
+
+    seed_bill_ids: list[str] = []
+    for seed in result.get("seeds", []):
+        if seed.get("type") == "BILL" or seed.get("type") == "schema:Legislation":
+            seed_bill_ids.append(seed.get("id", ""))
+
+    bill_citations = _retrieve_bill_excerpts(
+        postgres=postgres,
+        embedding_client=embedding_client,
+        query=query,
+        seed_bill_ids=seed_bill_ids,
+        max_bill_citations=max_bill_citations,
+    )
+
+    result["bill_citations"] = bill_citations
+    result["debug"]["bill_citation_count"] = len(bill_citations)
+
+    return result

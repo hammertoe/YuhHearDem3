@@ -186,17 +186,25 @@ def _merge_cite_utterance_ids(
 
 @dataclass
 class ChatSource:
-    utterance_id: str
-    youtube_video_id: str
-    youtube_url: str
-    seconds_since_start: int
-    timestamp_str: str
-    speaker_id: str
-    speaker_name: str
-    speaker_title: str | None
-    text: str
-    video_title: str | None
-    video_date: str | None
+    source_kind: str = "utterance"
+    citation_id: str | None = None
+    utterance_id: str = ""
+    youtube_video_id: str = ""
+    youtube_url: str = ""
+    seconds_since_start: int = 0
+    timestamp_str: str = ""
+    speaker_id: str = ""
+    speaker_name: str = ""
+    speaker_title: str | None = None
+    text: str = ""
+    video_title: str | None = None
+    video_date: str | None = None
+    bill_id: str | None = None
+    bill_number: str | None = None
+    bill_title: str | None = None
+    excerpt: str | None = None
+    source_url: str | None = None
+    chunk_index: int | None = None
 
 
 class KGChatAgentV2:
@@ -326,6 +334,8 @@ class KGChatAgentV2:
         max_sources: int = 24,
     ) -> list[ChatSource]:
         citations = (retrieval.get("citations") or []) if retrieval else []
+        bill_citations = (retrieval.get("bill_citations") or []) if retrieval else []
+
         citation_by_id: dict[str, dict[str, Any]] = {}
         for c in citations:
             if not isinstance(c, dict):
@@ -335,12 +345,42 @@ class KGChatAgentV2:
                 continue
             for key in _citation_lookup_keys(cid):
                 citation_by_id[key] = c
+
+        bill_citation_by_id: dict[str, dict[str, Any]] = {}
+        for bc in bill_citations:
+            if not isinstance(bc, dict):
+                continue
+            bcid = str(bc.get("citation_id") or "").strip()
+            if bcid:
+                bill_citation_by_id[bcid] = bc
+
         fetched_ids: set[str] = set()
         out: list[ChatSource] = []
 
         for uid in cite_utterance_ids:
             normalized_uid = _normalize_citation_id(uid)
             if not normalized_uid:
+                continue
+
+            if normalized_uid.startswith("bill:"):
+                if normalized_uid in bill_citation_by_id:
+                    bc = bill_citation_by_id[normalized_uid]
+                    if normalized_uid in fetched_ids:
+                        continue
+                    out.append(
+                        ChatSource(
+                            source_kind="bill_excerpt",
+                            citation_id=normalized_uid,
+                            bill_id=bc.get("bill_id", ""),
+                            bill_number=bc.get("bill_number", ""),
+                            bill_title=bc.get("bill_title", ""),
+                            excerpt=bc.get("excerpt", ""),
+                            source_url=bc.get("source_url", ""),
+                            chunk_index=int(bc.get("chunk_index") or 0),
+                            text=bc.get("excerpt", ""),
+                        )
+                    )
+                    fetched_ids.add(normalized_uid)
                 continue
 
             c = None
@@ -355,6 +395,7 @@ class KGChatAgentV2:
                     continue
                 out.append(
                     ChatSource(
+                        source_kind="utterance",
                         utterance_id=c.get("utterance_id", ""),
                         youtube_video_id=c.get("youtube_video_id", ""),
                         youtube_url=c.get("youtube_url", ""),
@@ -378,6 +419,25 @@ class KGChatAgentV2:
                     fetched_ids.add(source.utterance_id)
             if len(out) >= max_sources:
                 break
+
+        for bc in bill_citations:
+            bcid = bc.get("citation_id", "")
+            if bcid and bcid not in fetched_ids and len(out) < max_sources:
+                out.append(
+                    ChatSource(
+                        source_kind="bill_excerpt",
+                        citation_id=str(bcid),
+                        bill_id=bc.get("bill_id", ""),
+                        bill_number=bc.get("bill_number", ""),
+                        bill_title=bc.get("bill_title", ""),
+                        excerpt=bc.get("excerpt", ""),
+                        source_url=bc.get("source_url", ""),
+                        chunk_index=int(bc.get("chunk_index") or 0),
+                        text=bc.get("excerpt", ""),
+                    )
+                )
+                fetched_ids.add(bcid)
+
         return out
 
     def _fetch_source_by_id(self, utterance_id: str) -> ChatSource | None:

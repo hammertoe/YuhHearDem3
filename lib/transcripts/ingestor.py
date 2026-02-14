@@ -399,17 +399,15 @@ class TranscriptIngestor:
         bill_id_raw = str(legislation_item.get("id") or "").strip()
         bill_id = bill_id_raw or generate_bill_id(bill_name)
         description = str(legislation_item.get("description") or "").strip()
-        source = str(legislation_item.get("source") or "").strip()
 
         self.postgres.execute_update(
             """
-            INSERT INTO bills (id, bill_number, title, description, status, source_text)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO bills (id, bill_number, title, description, status)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 bill_number = EXCLUDED.bill_number,
                 title = EXCLUDED.title,
-                description = EXCLUDED.description,
-                source_text = EXCLUDED.source_text,
+                description = COALESCE(NULLIF(EXCLUDED.description, ''), bills.description),
                 updated_at = NOW()
             """,
             (
@@ -418,7 +416,6 @@ class TranscriptIngestor:
                 bill_name,
                 description,
                 "",
-                source,
             ),
         )
 

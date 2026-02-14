@@ -16,6 +16,8 @@ export type Thread = {
 };
 
 export type ChatSource = {
+  source_kind?: 'utterance' | 'bill_excerpt';
+  citation_id?: string | null;
   utterance_id: string;
   youtube_video_id: string;
   youtube_url: string;
@@ -27,6 +29,12 @@ export type ChatSource = {
   text: string;
   video_title: string | null;
   video_date: string | null;
+  bill_id?: string | null;
+  bill_number?: string | null;
+  bill_title?: string | null;
+  excerpt?: string | null;
+  source_url?: string | null;
+  chunk_index?: number | null;
 };
 
 export type ChatResponse = {

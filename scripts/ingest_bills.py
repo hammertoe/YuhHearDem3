@@ -13,11 +13,11 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-from lib.db.postgres_client import PostgresClient
-from lib.embeddings.google_client import GoogleEmbeddingClient
-from lib.processors.bill_entity_extractor import BillEntityExtractor
-from lib.processors.bill_ingestor import BillIngestor
-from lib.scraping.bill_scraper import BillScraper
+from lib.db.postgres_client import PostgresClient  # noqa: E402
+from lib.embeddings.google_client import GoogleEmbeddingClient  # noqa: E402
+from lib.processors.bill_entity_extractor import BillEntityExtractor  # noqa: E402
+from lib.processors.bill_ingestor import BillIngestor  # noqa: E402
+from lib.scraping.bill_scraper import BillScraper  # noqa: E402
 
 
 def main() -> int:
@@ -49,8 +49,13 @@ def main() -> int:
         help="Skip generating/storing bill embeddings in Postgres",
     )
     parser.add_argument(
+        "--skip-excerpts",
+        action="store_true",
+        help="Skip generating/storing bill excerpt chunks with embeddings",
+    )
+    parser.add_argument(
         "--source-url",
-        default="https://www.parliament.gov.bb/legislation",
+        default="https://www.barbadosparliament.com",
         help="URL to scrape bills from",
     )
     args = parser.parse_args()
@@ -63,6 +68,8 @@ def main() -> int:
     print(f"Scraped File: {args.scraped_file}")
     print(f"Processed File: {args.processed_file}")
     print(f"Max Bills: {args.max_bills or 'All'}")
+    print(f"Skip Embeddings: {args.skip_embeddings}")
+    print(f"Skip Excerpts: {args.skip_excerpts}")
     print("=" * 80)
 
     if args.scrape:
@@ -71,7 +78,7 @@ def main() -> int:
         with open(args.scraped_file, "w", encoding="utf-8") as f:
             json.dump(bills, f, indent=2)
     else:
-        with open(args.scraped_file, "r", encoding="utf-8") as f:
+        with open(args.scraped_file, encoding="utf-8") as f:
             bills = json.load(f)
 
     if args.max_bills:
@@ -91,10 +98,16 @@ def main() -> int:
             postgres=postgres,
             embedding_client=embeddings,
         )
-        ingestor.ingest_bills(bills, embed=not args.skip_embeddings)
+        total_excerpts = ingestor.ingest_bills(
+            bills,
+            embed=not args.skip_embeddings,
+            ingest_excerpts=not args.skip_excerpts,
+        )
 
     print("\n" + "=" * 80)
     print("✅ Bill ingestion complete")
+    print(f"   Bills processed: {len(bills)}")
+    print(f"   Excerpts created: {total_excerpts}")
     print("=" * 80)
     return 0
 
