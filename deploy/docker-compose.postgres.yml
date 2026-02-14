@@ -4,7 +4,7 @@
 
 services:
   yhd-postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg16
     container_name: yhd-postgres
     restart: unless-stopped
     env_file:
