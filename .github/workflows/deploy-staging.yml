@@ -14,7 +14,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/hammertoe/yhd
-  STAGING_HOST: yhd-staging
+  STAGING_HOST: 89.167.73.70
 
 jobs:
   deploy:
