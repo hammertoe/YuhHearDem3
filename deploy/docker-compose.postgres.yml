@@ -1,0 +1,29 @@
+# Shared PostgreSQL for blue-green deployment
+# Always running - not managed by deploy.sh
+# Auto-starts on boot via restart: unless-stopped
+
+services:
+  yhd-postgres:
+    image: postgres:16-alpine
+    container_name: yhd-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_DB=${POSTGRES_DATABASE:-parliament_search}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - yhd-shared
+
+networks:
+  yhd-shared:
+    external: true

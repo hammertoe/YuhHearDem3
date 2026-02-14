@@ -1,0 +1,25 @@
+# Blue slot for blue-green deployment
+# Port: 8003
+# Connects to shared postgres via yhd-shared network
+
+services:
+  yhd-blue:
+    image: yhd:blue
+    container_name: yhd-blue
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8003:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - yhd-shared
+
+networks:
+  yhd-shared:
+    external: true
