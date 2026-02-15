@@ -172,7 +172,7 @@ def get_generate_content_config(model: Model, video: Video) -> GenerateContentCo
         response_schema=VideoTranscriptionEnhanced,
         media_resolution=media_resolution,
         thinking_config=thinking_config,
-        max_output_tokens=32768,
+        max_output_tokens=262144,
     )
 
 
@@ -659,7 +659,7 @@ def process_video_iteratively(
         if not order_text:
             print(f"⚠️ Order paper not found in DB: {order_paper_id}")
     elif order_file:
-        with open(order_file, "r") as f:
+        with open(order_file) as f:
             order_text = f.read().strip()
 
     while segment_start < total_duration:
