@@ -22,7 +22,7 @@ echo -e "${BLUE}=== Parliamentary Search Database Manager ===${NC}"
 # Function to check if container is running
 check_containers() {
     echo -e "\n${YELLOW}Checking containers...${NC}"
-    
+
     if docker ps | grep -q "parliament_postgres"; then
         echo -e "${GREEN}✓${NC} PostgreSQL container running"
     else
@@ -35,21 +35,21 @@ check_containers() {
 # Function to wait for database to be ready
 wait_for_db() {
     echo -e "\n${YELLOW}Waiting for database to be ready...${NC}"
-    
+
     max_attempts=30
     attempt=1
-    
+
     while [ $attempt -le $max_attempts ]; do
         if docker exec parliament_postgres pg_isready -U postgres > /dev/null 2>&1; then
             echo -e "${GREEN}✓${NC} Database is ready!"
             return 0
         fi
-        
+
         echo -n "."
         sleep 2
         attempt=$((attempt + 1))
     done
-    
+
     echo -e "\n${RED}✗${NC} Database did not become ready in 60 seconds"
     echo "Check logs: docker logs parliament_postgres"
     exit 1
@@ -77,11 +77,11 @@ check_tables() {
 db_info() {
     echo -e "\n${BLUE}=== Database Information ===${NC}"
     docker exec parliament_postgres psql -U $DB_USER -d $DB_NAME -c "
-        SELECT 
+        SELECT
             schemaname,
             tablename,
             tableowner
-        FROM pg_tables 
+        FROM pg_tables
         WHERE schemaname = 'public'
         ORDER BY tablename;
     "
@@ -95,7 +95,7 @@ create_test_data() {
         INSERT INTO speakers (id, normalized_name, full_name, title, position, role_in_video, first_appearance, total_appearances)
         VALUES ('s_test_1', 'test', 'Test Speaker', 'Hon.', 'Member', 'member', '00:00:00', 1)
         ON CONFLICT (id) DO NOTHING;
-        
+
         -- Check it worked
         SELECT * FROM speakers LIMIT 5;
     "
