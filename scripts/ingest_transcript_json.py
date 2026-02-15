@@ -11,9 +11,9 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-from lib.db.postgres_client import PostgresClient
-from lib.embeddings.google_client import GoogleEmbeddingClient
-from lib.transcripts.ingestor import TranscriptIngestor
+from lib.db.postgres_client import PostgresClient  # noqa: E402
+from lib.embeddings.google_client import GoogleEmbeddingClient  # noqa: E402
+from lib.transcripts.ingestor import TranscriptIngestor  # noqa: E402
 
 
 def main() -> int:
@@ -42,7 +42,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    with open(args.transcript_file, "r", encoding="utf-8") as f:
+    with open(args.transcript_file, encoding="utf-8") as f:
         transcript_data = json.load(f)
 
     embeddings = GoogleEmbeddingClient()

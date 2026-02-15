@@ -32,9 +32,7 @@ from lib.roles import (
 )
 
 
-def _load_order_paper_parsed_json(
-    postgres: PostgresClient, order_paper_id: str
-) -> dict:
+def _load_order_paper_parsed_json(postgres: PostgresClient, order_paper_id: str) -> dict:
     rows = postgres.execute_query(
         """
         SELECT parsed_json
@@ -145,9 +143,7 @@ def _match_speaker_id(
     best_id: str | None = None
     best_score = 0
     for speaker_id, candidate_name in candidates:
-        score = fuzz.token_sort_ratio(
-            cleaned, _strip_honorifics_and_punct(candidate_name)
-        )
+        score = fuzz.token_sort_ratio(cleaned, _strip_honorifics_and_punct(candidate_name))
         if score > best_score:
             best_score = score
             best_id = speaker_id
@@ -170,9 +166,7 @@ def backfill_roles_for_video(
             print("⚠️ No speaker roles found in order paper parsed_json")
             return 0
 
-        name_to_id = _build_exact_name_to_speaker_id_map(
-            pg, youtube_video_id=youtube_video_id
-        )
+        name_to_id = _build_exact_name_to_speaker_id_map(pg, youtube_video_id=youtube_video_id)
         candidates = [(sid, nm) for nm, sid in name_to_id.items()]
 
         inserted = 0
@@ -262,12 +256,8 @@ def main() -> int:
         description="Backfill speaker_video_roles for an existing video from an existing order paper"
     )
     parser.add_argument("--youtube-video-id", required=True, help="YouTube video ID")
-    parser.add_argument(
-        "--order-paper-id", required=True, help="Order paper ID (order_papers.id)"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Print what would be inserted"
-    )
+    parser.add_argument("--order-paper-id", required=True, help="Order paper ID (order_papers.id)")
+    parser.add_argument("--dry-run", action="store_true", help="Print what would be inserted")
     args = parser.parse_args()
 
     try:

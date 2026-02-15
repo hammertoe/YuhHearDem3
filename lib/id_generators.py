@@ -52,9 +52,7 @@ def generate_bill_id(bill_number: str, existing_ids: set[str] | None = None) -> 
     return f"{base_id}_{counter}"
 
 
-def generate_order_paper_id(
-    chamber_code: str, session_date, order_paper_number: str
-) -> str:
+def generate_order_paper_id(chamber_code: str, session_date, order_paper_number: str) -> str:
     """Generate order paper ID: op_{chamber_code}_{YYYYMMDD}_{order_paper_number}"""
     date_str = session_date.strftime("%Y%m%d")
     normalized_number = re.sub(r"[^A-Za-z0-9_]", "", order_paper_number)
@@ -66,7 +64,7 @@ def generate_entity_id(text: str, entity_type: str) -> str:
     """Generate entity ID: ent_{hash} using MD5 of type:text"""
     normalized = text.strip().lower()
     unique_str = f"{entity_type}:{normalized}"
-    hash_obj = hashlib.md5(unique_str.encode())
+    hash_obj = hashlib.md5(unique_str.encode(), usedforsecurity=False)
     hash_hex = hash_obj.hexdigest()[:12]
     return f"ent_{hash_hex}"
 
@@ -75,13 +73,20 @@ def parse_timestamp_to_seconds(timestamp: str) -> int:
     """Parse HH:MM:SS timestamp to seconds since start."""
     parts = timestamp.split(":")
     if len(parts) == 3:
-        hours, mins, secs = map(int, parts)
+        hours_raw, mins_raw, secs_raw = parts
+        hours = int(hours_raw)
+        mins = int(mins_raw)
+        secs = int(secs_raw)
+
+        has_millis = len(secs_raw) > 2 or secs > 59
+        if hours >= 24 or has_millis:
+            return hours * 60 + mins
+
         return hours * 3600 + mins * 60 + secs
-    elif len(parts) == 2:
+    if len(parts) == 2:
         mins, secs = map(int, parts)
         return mins * 60 + secs
-    else:
-        raise ValueError(f"Invalid timestamp format: {timestamp}")
+    raise ValueError(f"Invalid timestamp format: {timestamp}")
 
 
 def format_seconds_to_timestamp(seconds: int) -> str:
@@ -109,7 +114,7 @@ def generate_kg_node_id(node_type: str, label: str) -> str:
     """Generate KG node ID: kg_<md5(type:normalized_label)>[:12]."""
     normalized = normalize_label(label)
     unique_str = f"{node_type}:{normalized}"
-    hash_obj = hashlib.md5(unique_str.encode())
+    hash_obj = hashlib.md5(unique_str.encode(), usedforsecurity=False)
     hash_hex = hash_obj.hexdigest()[:12]
     return f"kg_{hash_hex}"
 
@@ -123,7 +128,9 @@ def generate_kg_edge_id(
     evidence: str,
 ) -> str:
     """Generate KG edge ID: kge_<md5(source_id|predicate|target_id|video_id|seconds|evidence_hash)>[:12]."""
-    unique_str = f"{source_id}|{predicate}|{target_id}|{youtube_video_id}|{earliest_seconds}|{evidence}"
-    hash_obj = hashlib.md5(unique_str.encode())
+    unique_str = (
+        f"{source_id}|{predicate}|{target_id}|{youtube_video_id}|{earliest_seconds}|{evidence}"
+    )
+    hash_obj = hashlib.md5(unique_str.encode(), usedforsecurity=False)
     hash_hex = hash_obj.hexdigest()[:12]
     return f"kge_{hash_hex}"

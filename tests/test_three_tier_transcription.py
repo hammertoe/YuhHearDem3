@@ -44,7 +44,7 @@ def sample_transcripts():
 
 def test_processor_init():
     """Test processor initialization."""
-    processor = ThreeTierTranscriptionProcessor()
+    _processor = ThreeTierTranscriptionProcessor()
     print("✅ Processor initialization works")
 
 

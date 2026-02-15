@@ -35,18 +35,14 @@ def test_process_video_passes_video_id_and_matched_order_paper(monkeypatch) -> N
     assert "op_h_20260113_one" in captured_cmd
 
 
-def test_add_video_to_watchlist_fetches_title_when_missing(
-    tmp_path, monkeypatch
-) -> None:
+def test_add_video_to_watchlist_fetches_title_when_missing(tmp_path, monkeypatch) -> None:
     manager = CronJobManager()
     manager.watch_file = str(tmp_path / "watchlist.json")
 
     monkeypatch.setattr(
         manager,
         "_fetch_video_title",
-        lambda _video_id: (
-            "The Honourable The House - Tuesday 20th January, 2026 - Part 1"
-        ),
+        lambda _video_id: ("The Honourable The House - Tuesday 20th January, 2026 - Part 1"),
     )
 
     manager.add_video_to_watchlist("abc123", None, 30, auto_process=True)
@@ -55,9 +51,7 @@ def test_add_video_to_watchlist_fetches_title_when_missing(
     assert data["videos"]["abc123"]["title"].startswith("The Honourable The House")
 
 
-def test_add_video_to_watchlist_falls_back_when_title_lookup_fails(
-    tmp_path, monkeypatch
-) -> None:
+def test_add_video_to_watchlist_falls_back_when_title_lookup_fails(tmp_path, monkeypatch) -> None:
     manager = CronJobManager()
     manager.watch_file = str(tmp_path / "watchlist.json")
 
@@ -69,20 +63,14 @@ def test_add_video_to_watchlist_falls_back_when_title_lookup_fails(
     assert data["videos"]["abc123"]["title"] == "Video abc123"
 
 
-def test_add_videos_from_file_supports_manual_and_fetched_titles(
-    tmp_path, monkeypatch
-) -> None:
+def test_add_videos_from_file_supports_manual_and_fetched_titles(tmp_path, monkeypatch) -> None:
     manager = CronJobManager()
     manager.watch_file = str(tmp_path / "watchlist.json")
 
     source_file = tmp_path / "videos.txt"
-    source_file.write_text(
-        "# comment\nabc123\ndef456|Custom Title\n\nghi789\n", encoding="utf-8"
-    )
+    source_file.write_text("# comment\nabc123\ndef456|Custom Title\n\nghi789\n", encoding="utf-8")
 
-    monkeypatch.setattr(
-        manager, "_fetch_video_title", lambda video_id: f"Fetched {video_id}"
-    )
+    monkeypatch.setattr(manager, "_fetch_video_title", lambda video_id: f"Fetched {video_id}")
 
     manager.add_videos_from_file(
         str(source_file),

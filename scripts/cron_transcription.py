@@ -67,7 +67,7 @@ class CronJobManager:
         if not os.path.exists(self.watch_file):
             return {"videos": {}}
 
-        with open(self.watch_file, "r") as f:
+        with open(self.watch_file) as f:
             return json.load(f)
 
     def save_watchlist(self, watchlist: dict[str, Any]) -> None:
@@ -130,9 +130,7 @@ class CronJobManager:
             cmd.extend(["--max-segments", str(max_segments)])
 
         try:
-            result = subprocess.run(
-                cmd, check=True, timeout=timedelta(hours=4).total_seconds()
-            )
+            result = subprocess.run(cmd, check=True, timeout=timedelta(hours=4).total_seconds())
 
             if result.returncode == 0:
                 print(f"\n✅ Successfully processed: {video_id}")
@@ -276,7 +274,7 @@ class CronJobManager:
           - VIDEO_ID
           - VIDEO_ID|TITLE
         """
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             lines = f.readlines()
 
         added = 0
@@ -350,9 +348,7 @@ class CronJobManager:
             watchlist["videos"][video_id]["status"] = status
 
             if status == "processed":
-                watchlist["videos"][video_id]["last_processed"] = (
-                    datetime.now().isoformat()
-                )
+                watchlist["videos"][video_id]["last_processed"] = datetime.now().isoformat()
 
         self.save_watchlist(watchlist)
 
@@ -395,12 +391,8 @@ def main():
         action="store_true",
         help="Enable auto-processing for added video",
     )
-    parser.add_argument(
-        "--max-segments", type=int, help="Max segments for video processing"
-    )
-    parser.add_argument(
-        "--list", action="store_true", help="List all videos in watchlist"
-    )
+    parser.add_argument("--max-segments", type=int, help="Max segments for video processing")
+    parser.add_argument("--list", action="store_true", help="List all videos in watchlist")
     parser.add_argument(
         "--process",
         action="store_true",
@@ -418,9 +410,7 @@ def main():
         choices=["pending", "processing", "processed", "failed"],
         help="Update video status",
     )
-    parser.add_argument(
-        "--remove", help="Remove video from watchlist (requires --video-id)"
-    )
+    parser.add_argument("--remove", help="Remove video from watchlist (requires --video-id)")
 
     args = parser.parse_args()
 
@@ -433,9 +423,7 @@ def main():
 
     if args.add_video:
         if len(args.add_video) < 2:
-            raise ValueError(
-                "--add-video requires at least VIDEO_ID and SEGMENT_MINUTES"
-            )
+            raise ValueError("--add-video requires at least VIDEO_ID and SEGMENT_MINUTES")
 
         video_id = args.add_video[0]
         segment_minutes = args.add_video[-1]

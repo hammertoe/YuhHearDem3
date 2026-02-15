@@ -18,13 +18,13 @@ from lib.id_generators import (
 
 def load_transcript_data(filepath: str) -> dict[str, object]:
     """Load transcript JSON file."""
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         return json.load(f)
 
 
 def load_knowledge_graph_data(filepath: str) -> dict[str, object]:
     """Load knowledge graph JSON file."""
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         return json.load(f)
 
 
