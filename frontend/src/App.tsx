@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createThread, getThread, sendMessage, type ChatSource, type ThreadMessage } from './api';
+import { groupSourcesByDocument } from './sourceGrouping';
+import { formatSourceTimecode } from './timeFormat';
 
 type UIMessage = {
   id: string;
@@ -70,19 +72,13 @@ function extractSources(metadata: unknown): ChatSource[] {
       excerpt: source.excerpt ? String(source.excerpt) : null,
       source_url: source.source_url ? String(source.source_url) : null,
       chunk_index: typeof source.chunk_index === 'number' ? source.chunk_index : null,
+      page_number: typeof source.page_number === 'number' ? source.page_number : null,
+      matched_terms: Array.isArray(source.matched_terms)
+        ? source.matched_terms.map((v) => String(v || '').trim()).filter((v) => v.length > 0)
+        : null,
     });
   }
   return out;
-}
-
-function sourceId(s: ChatSource): string {
-  if (s.source_kind === 'bill_excerpt') {
-    return (
-      (s.citation_id || '').trim() ||
-      `bill:${(s.bill_id || '').trim()}:${Number(s.chunk_index || 0)}`
-    );
-  }
-  return (s.utterance_id || '').trim();
 }
 
 function extractFollowupQuestions(metadata: unknown): string[] {
@@ -264,6 +260,11 @@ function MarkdownMessage({
     () => normalizeCitationMarkup(content),
     [content]
   );
+  const groupedSources = useMemo(() => groupSourcesByDocument(sources || []), [sources]);
+  const orderedSourceKeys = useMemo(
+    () => groupedSources.flatMap((group) => group.items.map((item) => item.source_key)),
+    [groupedSources]
+  );
 
   const inlineLinkIds = useMemo(() => {
     const ids: string[] = [];
@@ -293,7 +294,7 @@ function MarkdownMessage({
       ids.push(raw);
     };
 
-    (sources || []).forEach((s) => add(sourceId(s)));
+    orderedSourceKeys.forEach((key) => add(key));
     inlineLinkIds.forEach(add);
 
     // Fallback for older messages that have citation IDs but no sources in metadata.
@@ -301,7 +302,7 @@ function MarkdownMessage({
       (citationIds || []).forEach(add);
     }
     return ids;
-  }, [inlineLinkIds, sources, citationIds]);
+  }, [inlineLinkIds, orderedSourceKeys, sources, citationIds]);
 
   const sourceIndex = useMemo(() => {
     const m = new Map<string, number>();
@@ -677,59 +678,91 @@ function App() {
                           <div className="label-text mb-2">
                             Sources from Parliament
                           </div>
-                          <div className="mt-2 space-y-2">
-                            {m.sources.map((s) => (
-                              (() => {
-                                const sid = sourceId(s);
-                                const normalizedSid = normalizeUtteranceId(sid);
-                                const isBill = s.source_kind === 'bill_excerpt';
-                                const href = isBill ? (s.source_url || '#') : s.youtube_url;
-                                return (
-                              <a
-                                key={sid}
-                                id={`src-${m.id}-${normalizedSid}`}
-                                href={href}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="source-card"
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded text-white ${isBill ? 'bg-[#00267F]' : 'bg-red-600'}`}>
-                                    {isBill ? <span className="text-[10px] font-bold">PDF</span> : <YouTubeIcon className="h-3 w-3" />}
+                          <div className="mt-2 space-y-3">
+                            {groupSourcesByDocument(m.sources).map((group) => (
+                              <div key={group.key} className="source-group">
+                                <div className="source-group-header">
+                                  <div
+                                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-white ${
+                                      group.kind === 'bill_excerpt' ? 'bg-[#00267F]' : 'bg-red-600'
+                                    }`}
+                                    role="img"
+                                    aria-label={group.kind === 'bill_excerpt' ? 'PDF source' : 'Video source'}
+                                    title={group.kind === 'bill_excerpt' ? 'PDF source' : 'Video source'}
+                                  >
+                                    {group.kind === 'bill_excerpt' ? (
+                                      <span className="text-[10px] font-bold">PDF</span>
+                                    ) : (
+                                      <YouTubeIcon className="h-3 w-3" />
+                                    )}
                                   </div>
-
                                   <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                                      <span className="text-sm font-bold font-display text-[#00267F]">
-                                        {isBill
-                                          ? (s.bill_title || s.bill_number || 'Bill excerpt')
-                                          : formatSpeakerName(s)}
-                                      </span>
-                                      {!isBill && formatSpeakerTitle(s) && (
-                                        <span className="text-xs text-ink/60 font-accent">
-                                          {formatSpeakerTitle(s)}
-                                        </span>
+                                      <span className="source-group-title">{group.title}</span>
+                                      {group.subtitle && (
+                                        <span className="source-group-subtitle">{group.subtitle}</span>
                                       )}
-                                    </div>
-
-                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink/60 font-accent">
-                                      {!isBill && s.video_title && (
-                                        <span className="source-title">{s.video_title}</span>
-                                      )}
-                                      {!isBill && s.timestamp_str && (
-                                        <span className="source-pill">@ {s.timestamp_str}</span>
-                                      )}
-                                      {isBill && <span className="source-pill">Bill PDF</span>}
-                                    </div>
-
-                                    <div className="mt-1 text-xs text-ink/80 source-snippet font-accent">
-                                      <em>&ldquo;{(isBill ? s.excerpt : s.text) || s.text}&rdquo;</em>
                                     </div>
                                   </div>
                                 </div>
-                              </a>
-                                );
-                              })()
+                                <div className="source-group-items">
+                                  {group.items.map((item) => {
+                                    const s = item.source;
+                                    const isBill = s.source_kind === 'bill_excerpt';
+                                    const href = isBill ? (s.source_url || '#') : s.youtube_url;
+                                    const normalizedSid = normalizeUtteranceId(item.source_key);
+                                    const timecode = !isBill ? formatSourceTimecode(s) : null;
+                                    return (
+                                      <a
+                                        key={item.source_key}
+                                        id={`src-${m.id}-${normalizedSid}`}
+                                        href={href}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="source-card"
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          <div
+                                            className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded text-white ${
+                                              isBill ? 'bg-[#00267F]' : 'bg-red-600'
+                                            }`}
+                                          >
+                                            <span className="text-[10px] font-bold">[{item.index}]</span>
+                                          </div>
+
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                              {timecode && (
+                                                <span className="source-time-pill">@ {timecode}</span>
+                                              )}
+                                              <span className="text-sm font-bold font-display text-[#00267F]">
+                                                {isBill
+                                                  ? `Page ${s.page_number || '–'}`
+                                                  : formatSpeakerName(s)}
+                                              </span>
+                                              {!isBill && formatSpeakerTitle(s) && (
+                                                <span className="text-xs text-ink/60 font-accent">
+                                                  {formatSpeakerTitle(s)}
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            <div className="mt-1 text-xs text-ink/80 source-snippet font-accent">
+                                              <em>&ldquo;{(isBill ? s.excerpt : s.text) || s.text}&rdquo;</em>
+                                            </div>
+
+                                            {isBill && s.matched_terms && s.matched_terms.length > 0 && (
+                                              <div className="mt-1 text-[11px] text-ink/60 font-accent">
+                                                Matched on: {s.matched_terms.slice(0, 4).join(', ')}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </a>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             ))}
                           </div>
                         </div>

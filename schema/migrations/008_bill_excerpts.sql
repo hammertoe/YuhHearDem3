@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS bill_excerpts (
     embedding vector(768),
     tsv tsvector,
     source_url TEXT,
+    page_number INTEGER,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     CONSTRAINT uq_bill_excerpts_bill_chunk UNIQUE (bill_id, chunk_index),

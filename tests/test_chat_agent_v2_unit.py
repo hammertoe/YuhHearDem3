@@ -174,3 +174,65 @@ def test_fetch_source_by_id_should_prefer_enriched_speaker_name_and_title() -> N
     assert source is not None
     assert source.speaker_name == "Mr. Ryan Straughn"
     assert source.speaker_title == "Minister in the Ministry of Finance"
+
+
+def test_sources_from_retrieval_should_only_include_cited_bill_excerpts() -> None:
+    agent = KGChatAgentV2(
+        postgres_client=_FakePostgresForFetch(),
+        embedding_client=object(),
+        client=object(),
+    )
+
+    retrieval = {
+        "citations": [],
+        "bill_citations": [
+            {
+                "citation_id": "bill:bill_1:3",
+                "bill_id": "bill_1",
+                "bill_number": "BILL-100",
+                "bill_title": "Water Services Bill",
+                "excerpt": "This page speaks to potable water quality standards.",
+                "source_url": "https://example.com/b1.pdf#page=12",
+                "chunk_index": 3,
+                "page_number": 12,
+                "matched_terms": ["water", "quality"],
+            },
+            {
+                "citation_id": "bill:bill_2:1",
+                "bill_id": "bill_2",
+                "bill_number": "BILL-200",
+                "bill_title": "Unrelated Finance Bill",
+                "excerpt": "Tax administration and revenue handling.",
+                "source_url": "https://example.com/b2.pdf#page=4",
+                "chunk_index": 1,
+                "page_number": 4,
+                "matched_terms": ["revenue"],
+            },
+        ],
+    }
+
+    sources = agent._sources_from_retrieval(
+        retrieval,
+        cite_utterance_ids=["bill:bill_1:3"],
+        max_sources=24,
+    )
+
+    assert len(sources) == 1
+    assert sources[0].citation_id == "bill:bill_1:3"
+
+
+def test_merge_cite_utterance_ids_should_keep_known_bill_citation_ids() -> None:
+    retrieval = {
+        "citations": [{"utterance_id": "utt_1"}],
+        "bill_citations": [
+            {"citation_id": "bill:water_bill:12"},
+        ],
+    }
+
+    got = _merge_cite_utterance_ids(
+        answer="Bill evidence [cite](#src:bill:water_bill:12)",
+        cite_utterance_ids=[],
+        retrieval=retrieval,
+    )
+
+    assert got == ["bill:water_bill:12"]

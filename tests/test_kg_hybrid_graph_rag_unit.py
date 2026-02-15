@@ -90,6 +90,22 @@ class _FakePostgres:
             # (sitting_date, name, title, role)
             return [("2026-01-06", "Santia Bradshaw", "Hon.", "Minister")]
 
+        if "FROM bill_excerpts be" in sql:
+            # (id, bill_id, chunk_index, text, source_url, distance, bill_number, title, page_number)
+            return [
+                (
+                    "bex_1",
+                    "bill_water_1",
+                    2,
+                    "Part IV addresses water quality and potable water systems.",
+                    "https://www.barbadosparliament.com/uploads/bill_resolution/sample.pdf",
+                    0.09,
+                    "BILL-123",
+                    "Water Services Bill, 2026",
+                    12,
+                )
+            ]
+
         return []
 
 
@@ -145,9 +161,7 @@ def test_kg_hybrid_graph_rag_returns_compact_subgraph():
     assert c["speaker_title"] == "Minister"
 
 
-def test_kg_hybrid_graph_rag_falls_back_to_speakers_position_when_no_session_role() -> (
-    None
-):
+def test_kg_hybrid_graph_rag_falls_back_to_speakers_position_when_no_session_role() -> None:
     from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
 
     class _FakePostgresNoRole(_FakePostgres):
@@ -189,9 +203,7 @@ def test_format_speaker_name_prefers_full_name_and_title_cases_normalized() -> N
     from lib.kg_hybrid_graph_rag import format_speaker_name
 
     assert (
-        format_speaker_name(
-            full_name=None, normalized_name="hon santia bradshaw", speaker_id=""
-        )
+        format_speaker_name(full_name=None, normalized_name="hon santia bradshaw", speaker_id="")
         == "The Honourable Santia Bradshaw"
     )
     assert (
@@ -200,3 +212,24 @@ def test_format_speaker_name_prefers_full_name_and_title_cases_normalized() -> N
         )
         == "Ralph Thorne"
     )
+
+
+def test_kg_hybrid_graph_rag_with_bills_should_include_page_fragment_and_match_terms() -> None:
+    from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag_with_bills
+
+    out = kg_hybrid_graph_rag_with_bills(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        query="water quality systems",
+        hops=1,
+        seed_k=5,
+        max_edges=20,
+        max_citations=5,
+        max_bill_citations=3,
+    )
+
+    assert len(out["bill_citations"]) == 1
+    bill = out["bill_citations"][0]
+    assert bill["page_number"] == 12
+    assert bill["source_url"].endswith("#page=12")
+    assert "water" in bill["matched_terms"]

@@ -196,6 +196,8 @@ class ChatSource(BaseModel):
     excerpt: str | None = None
     source_url: str | None = None
     chunk_index: int | None = None
+    page_number: int | None = None
+    matched_terms: list[str] | None = None
 
 
 class ChatFocusNode(BaseModel):

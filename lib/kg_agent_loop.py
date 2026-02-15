@@ -370,6 +370,7 @@ def _infer_citation_ids_from_src_links(answer: str, retrieval: dict[str, Any] | 
 
     known_lookup: dict[str, str] = {}
     known_ids: list[str] = []
+    known_bill_ids: set[str] = set()
     if isinstance(retrieval, dict):
         for citation in retrieval.get("citations") or []:
             if not isinstance(citation, dict):
@@ -380,6 +381,12 @@ def _infer_citation_ids_from_src_links(answer: str, retrieval: dict[str, Any] | 
             known_ids.append(known_id)
             for key in _citation_lookup_keys(known_id):
                 known_lookup[key] = known_id
+        for bill_citation in retrieval.get("bill_citations") or []:
+            if not isinstance(bill_citation, dict):
+                continue
+            bill_id = _normalize_citation_id(str(bill_citation.get("citation_id") or ""))
+            if bill_id:
+                known_bill_ids.add(bill_id)
 
     suffix_counts: dict[str, int] = {}
     for known_id in known_ids:
@@ -394,6 +401,15 @@ def _infer_citation_ids_from_src_links(answer: str, retrieval: dict[str, Any] | 
     for token in src_tokens:
         normalized = _normalize_citation_id(token)
         if not normalized:
+            continue
+
+        if normalized.startswith("bill:"):
+            if normalized not in known_bill_ids:
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            out.append(normalized)
             continue
 
         resolved = normalized
@@ -450,13 +466,25 @@ def _filter_to_known_citation_ids(
         for c in (retrieval.get("citations") or [])
         if isinstance(c, dict)
     ]
+    known_bill_ids = {
+        _normalize_citation_id(str(c.get("citation_id") or ""))
+        for c in (retrieval.get("bill_citations") or [])
+        if isinstance(c, dict)
+    }
+    known_bill_ids.discard("")
     known_ids = [k for k in known_ids if k]
     if not known_ids:
-        return [
-            _normalize_citation_id(str(x or ""))
-            for x in cite_utterance_ids
-            if _normalize_citation_id(str(x or ""))
-        ]
+        out_without_known_ids: list[str] = []
+        seen_without_known_ids: set[str] = set()
+        for raw in cite_utterance_ids:
+            uid = _normalize_citation_id(str(raw or ""))
+            if not uid or uid in seen_without_known_ids:
+                continue
+            if uid.startswith("bill:") and uid not in known_bill_ids:
+                continue
+            seen_without_known_ids.add(uid)
+            out_without_known_ids.append(uid)
+        return out_without_known_ids
 
     known_lookup: dict[str, str] = {}
     for known_id in known_ids:
@@ -476,6 +504,13 @@ def _filter_to_known_citation_ids(
     for raw in cite_utterance_ids:
         uid = _normalize_citation_id(str(raw or ""))
         if not uid:
+            continue
+
+        if uid.startswith("bill:"):
+            if uid not in known_bill_ids or uid in seen:
+                continue
+            seen.add(uid)
+            out.append(uid)
             continue
 
         resolved = None
@@ -731,6 +766,12 @@ class KGAgentLoop:
             result_parts: list[types.Part] = []
             for fc in function_calls:
                 if fc.name == "kg_hybrid_graph_rag":
+                    threshold_raw = fc.args.get("edge_rank_threshold")
+                    threshold_value: float | None = None
+                    if isinstance(threshold_raw, int | float):
+                        threshold_value = float(threshold_raw)
+                    elif isinstance(threshold_raw, str) and threshold_raw.strip():
+                        threshold_value = float(threshold_raw.strip())
                     _trace_print(
                         trace_id,
                         "Tool Call",
@@ -746,9 +787,7 @@ class KGAgentLoop:
                         max_edges=int(fc.args.get("max_edges", 90)),
                         max_citations=int(fc.args.get("max_citations", 12)),
                         max_bill_citations=int(fc.args.get("max_bill_citations", 8)),
-                        edge_rank_threshold=float(fc.args.get("edge_rank_threshold"))
-                        if fc.args.get("edge_rank_threshold") is not None
-                        else None,
+                        edge_rank_threshold=threshold_value,
                     )
                     tool_duration = _end_timer(tool_start)
                     last_retrieval = tool_result

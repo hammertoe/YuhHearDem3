@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from lib.bills.excerpt_chunker import chunk_bill_text, generate_chunk_id
+from lib.bills.excerpt_chunker import chunk_bill_pages, chunk_bill_text, generate_chunk_id
+from lib.bills.pdf_page_extractor import BillPdfPageExtractor
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import generate_bill_id, generate_entity_id
@@ -21,9 +22,11 @@ class BillIngestor:
         self,
         postgres: PostgresClient | None = None,
         embedding_client: GoogleEmbeddingClient | None = None,
+        pdf_extractor: BillPdfPageExtractor | None = None,
     ):
         self.postgres = postgres or PostgresClient()
         self.embedding_client = embedding_client or GoogleEmbeddingClient()
+        self.pdf_extractor = pdf_extractor
 
     def ingest_bills(
         self,
@@ -207,15 +210,36 @@ class BillIngestor:
         source_text = bill.get("source_text", "")
         description = bill.get("description")
         title = bill.get("title")
+        source_url = str(bill.get("source_url") or "").strip()
 
-        chunks = chunk_bill_text(
-            bill_id=bill_id,
-            source_text=source_text,
-            description=description,
-            title=title,
-            chunk_size=chunk_size,
-            overlap=overlap,
-        )
+        chunks = []
+        if source_text:
+            chunks = chunk_bill_text(
+                bill_id=bill_id,
+                source_text=source_text,
+                description=description,
+                title=title,
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
+        elif source_url.lower().endswith(".pdf"):
+            extractor = self.pdf_extractor or BillPdfPageExtractor()
+            pages = extractor.extract_pages(source_url)
+            chunks = chunk_bill_pages(
+                bill_id=bill_id,
+                pages=[{"page_number": p.page_number, "text": p.text} for p in pages],
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
+        else:
+            chunks = chunk_bill_text(
+                bill_id=bill_id,
+                source_text="",
+                description=description,
+                title=title,
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
 
         if not chunks:
             return 0
@@ -238,15 +262,16 @@ class BillIngestor:
                 """
                 INSERT INTO bill_excerpts (
                     id, bill_id, chunk_index, text, char_start, char_end,
-                    embedding, source_url
+                    embedding, source_url, page_number
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (bill_id, chunk_index) DO UPDATE SET
                     text = EXCLUDED.text,
                     char_start = EXCLUDED.char_start,
                     char_end = EXCLUDED.char_end,
                     embedding = EXCLUDED.embedding,
                     source_url = EXCLUDED.source_url,
+                    page_number = EXCLUDED.page_number,
                     updated_at = NOW()
                 """,
                 (
@@ -258,6 +283,7 @@ class BillIngestor:
                     chunk.char_end,
                     _vector_literal(embedding),
                     source_url,
+                    chunk.page_number,
                 ),
             )
 

@@ -51,8 +51,8 @@ def test_bill_ingestor_init():
     from lib.processors.bill_ingestor import BillIngestor
 
     with (
-        PostgresClient() as postgres,
-        GoogleEmbeddingClient() as embeddings,
+        PostgresClient() as _postgres,
+        GoogleEmbeddingClient() as _embeddings,
     ):
         ingestor = BillIngestor()
 
@@ -69,7 +69,7 @@ def test_ingest_bill_postgres():
 
     with (
         PostgresClient() as postgres,
-        GoogleEmbeddingClient() as embeddings,
+        GoogleEmbeddingClient() as _embeddings,
     ):
         ingestor = BillIngestor()
 
@@ -106,7 +106,7 @@ def test_ingest_bill_embeddings():
     from lib.processors.bill_ingestor import BillIngestor
     from unittest.mock import patch
 
-    with PostgresClient() as postgres, GoogleEmbeddingClient() as embeddings:
+    with PostgresClient() as postgres, GoogleEmbeddingClient() as _embeddings:
         ingestor = BillIngestor()
 
         bill_data = {
@@ -115,7 +115,7 @@ def test_ingest_bill_embeddings():
             "id": "test_bill_id",
         }
 
-        bill_id = generate_bill_id("TEST", set())
+        _bill_id = generate_bill_id("TEST", set())
         entity_id = generate_entity_id("Test Bill", "BILL")
 
         with patch.object(ingestor.embedding_client, "generate_embedding") as mock_embed:
@@ -151,7 +151,7 @@ def test_ingest_bills_batch():
 
     with (
         PostgresClient() as postgres,
-        GoogleEmbeddingClient() as embeddings,
+        GoogleEmbeddingClient() as _embeddings,
     ):
         ingestor = BillIngestor()
 

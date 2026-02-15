@@ -9,25 +9,25 @@
   --bajan-blue: #00267F;
   --bajan-gold: #FFC726;
   --bajan-black: #1A1A1A;
-  
+
   /* Chattel House Colors */
   --chattel-coral: #E85D4E;
   --chattel-mint: #7CB9A8;
   --chattel-cream: #F5E6C8;
   --chattel-sky: #87CEEB;
-  
+
   /* Natural Barbados */
   --ocean-deep: #006994;
   --ocean-shallow: #40E0D0;
   --sand-warm: #E6D5AC;
-  
+
   /* Paper & Ink */
   --paper: #FDF8F0;
   --paper-warm: #FAF6EF;
   --ink: #1A1A1A;
   --ink-muted: rgba(26, 26, 26, 0.65);
   --ink-light: rgba(26, 26, 26, 0.45);
-  
+
   /* Typography */
   --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'DM Serif Display', Georgia, serif;
@@ -59,7 +59,7 @@ body {
 /* Bajan Background - Chattel House Pattern */
 .app-bg {
   background-color: var(--paper);
-  background-image: 
+  background-image:
     /* Subtle corrugated roof pattern */
     repeating-linear-gradient(
       90deg,
@@ -91,7 +91,7 @@ body {
   border: 2px solid var(--bajan-blue);
   border-radius: 4px;
   padding: 24px;
-  box-shadow: 
+  box-shadow:
     4px 4px 0 var(--bajan-gold),
     8px 8px 0 rgba(0, 38, 127, 0.08);
   position: relative;
@@ -230,34 +230,53 @@ body {
 .source-card {
   display: block;
   background: white;
-  border: 2px solid var(--ocean-shallow);
+  border: 1px solid rgba(0, 38, 127, 0.12);
   border-radius: 4px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   position: relative;
   overflow: hidden;
   transition: all 0.2s ease;
   box-shadow: 2px 2px 0 rgba(0, 105, 148, 0.15);
 }
 
-.source-card::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: repeating-linear-gradient(
-    90deg,
-    var(--ocean-shallow),
-    var(--ocean-shallow) 8px,
-    transparent 8px,
-    transparent 12px
-  );
+.source-card:hover {
+  background: rgba(0, 105, 148, 0.06);
+  box-shadow: 2px 2px 0 rgba(0, 105, 148, 0.2);
 }
 
-.source-card:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 4px 4px 0 rgba(0, 105, 148, 0.2);
+.source-group {
+  border: 2px solid rgba(0, 38, 127, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 8px 10px 10px;
+}
+
+.source-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(0, 38, 127, 0.18);
+}
+
+.source-group-title {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--bajan-blue);
+}
+
+.source-group-subtitle {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-family: var(--font-accent);
+}
+
+.source-group-items {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .source-flash {
@@ -270,6 +289,8 @@ body {
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 .source-pill {
@@ -292,6 +313,20 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-weight: 600;
+}
+
+.source-time-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 38, 127, 0.2);
+  background: rgba(0, 38, 127, 0.08);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--bajan-blue);
+  font-family: var(--font-accent);
 }
 
 /* Markdown Styling */
@@ -456,11 +491,11 @@ body {
 }
 
 @keyframes tropicalBounce {
-  0%, 100% { 
+  0%, 100% {
     transform: translateY(0);
     background: var(--bajan-blue);
   }
-  50% { 
+  50% {
     transform: translateY(-6px);
     background: var(--bajan-gold);
   }
@@ -478,17 +513,17 @@ body {
   background-size: cover;
   background-position: center 18%;
   background-repeat: no-repeat;
-  
+
   /* “subtle in header” look */
   opacity: 0.22;
   filter: blur(0.2px) saturate(0.9) contrast(0.95);
   transform: scale(1.02); /* avoids edge seams */
-  
+
   /* Standard mask for most browsers */
   mask-image: linear-gradient(to bottom, black 0%, black 45%, transparent 100%);
   /* Webkit prefix for Brave/Chrome/Safari */
   -webkit-mask-image: linear-gradient(to bottom, black 0%, black 45%, transparent 100%);
-  
+
   /* Helpful blend mode */
   mix-blend-mode: multiply;
 

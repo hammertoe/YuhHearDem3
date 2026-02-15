@@ -239,9 +239,7 @@ class BillEntityExtractor:
         existing_bill_ids = set()
 
         for i, bill in enumerate(bills, 1):
-            print(
-                f"[{i}/{len(bills)}] Processing: {bill.get('bill_number', 'Unknown')}"
-            )
+            print(f"[{i}/{len(bills)}] Processing: {bill.get('bill_number', 'Unknown')}")
 
             bill = self.extract_entities_from_bill(bill)
 
@@ -324,7 +322,7 @@ def main():
     print(f"Output File: {args.output_file}")
     print("=" * 80)
 
-    with open(args.input_file, "r") as f:
+    with open(args.input_file) as f:
         bills = json.load(f)
 
     extractor = BillEntityExtractor()

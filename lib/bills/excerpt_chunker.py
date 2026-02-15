@@ -13,6 +13,7 @@ class BillChunk:
     text: str
     char_start: int
     char_end: int
+    page_number: int | None = None
 
 
 DEFAULT_CHUNK_SIZE = 900
@@ -23,7 +24,7 @@ MIN_CHUNK_SIZE = 100
 def generate_chunk_id(bill_id: str, chunk_index: int) -> str:
     """Generate a stable ID for a bill chunk."""
     unique = f"bex_{bill_id}_{chunk_index}".encode()
-    return "bex_" + hashlib.md5(unique).hexdigest()[:12]
+    return "bex_" + hashlib.md5(unique, usedforsecurity=False).hexdigest()[:12]
 
 
 def chunk_text(
@@ -44,13 +45,23 @@ def chunk_text(
 
     text = text.strip()
     if len(text) <= chunk_size:
-        return [BillChunk(bill_id="", chunk_index=0, text=text, char_start=0, char_end=len(text))]
+        return [
+            BillChunk(
+                bill_id="",
+                chunk_index=0,
+                text=text,
+                char_start=0,
+                char_end=len(text),
+                page_number=None,
+            )
+        ]
 
     chunks: list[BillChunk] = []
     char_start = 0
     chunk_index = 0
 
     while char_start < len(text):
+        current_start = char_start
         char_end = char_start + chunk_size
 
         if char_end >= len(text):
@@ -83,13 +94,15 @@ def chunk_text(
                     text=chunk_text,
                     char_start=char_start,
                     char_end=char_start + len(chunk_text),
+                    page_number=None,
                 )
             )
             chunk_index += 1
 
-        char_start = char_end - overlap
-        if char_start <= (chunks[-1].char_start if chunks else 0):
-            char_start = (chunks[-1].char_end if chunks else 0) + 1
+        next_start = max(char_end - overlap, current_start + 1)
+        if next_start <= current_start:
+            next_start = current_start + 1
+        char_start = next_start
 
         if char_start >= len(text):
             break
@@ -138,6 +151,40 @@ def chunk_bill_text(
             text=c.text,
             char_start=c.char_start,
             char_end=c.char_end,
+            page_number=None,
         )
         for c in raw_chunks
     ]
+
+
+def chunk_bill_pages(
+    bill_id: str,
+    pages: list[dict[str, str | int]],
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    overlap: int = DEFAULT_OVERLAP,
+) -> list[BillChunk]:
+    """Chunk extracted bill PDF pages while preserving page references."""
+    out: list[BillChunk] = []
+    next_chunk_index = 0
+
+    for raw_page in pages:
+        page_number = int(raw_page.get("page_number") or 0)
+        page_text = str(raw_page.get("text") or "").strip()
+        if page_number <= 0 or not page_text:
+            continue
+
+        page_chunks = chunk_text(page_text, chunk_size=chunk_size, overlap=overlap)
+        for page_chunk in page_chunks:
+            out.append(
+                BillChunk(
+                    bill_id=bill_id,
+                    chunk_index=next_chunk_index,
+                    text=page_chunk.text,
+                    char_start=page_chunk.char_start,
+                    char_end=page_chunk.char_end,
+                    page_number=page_number,
+                )
+            )
+            next_chunk_index += 1
+
+    return out

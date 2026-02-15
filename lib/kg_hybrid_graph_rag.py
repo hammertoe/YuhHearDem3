@@ -199,6 +199,48 @@ def _dedupe_by_id(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(best_scores.values())
 
 
+def _query_terms(query: str) -> list[str]:
+    terms = [t.lower() for t in re.findall(r"\b[a-zA-Z][a-zA-Z0-9-]{2,}\b", query or "")]
+    stop = {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "that",
+        "this",
+        "what",
+        "when",
+        "where",
+        "which",
+        "about",
+        "into",
+        "over",
+        "under",
+        "have",
+        "has",
+        "had",
+    }
+    out: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        if term in stop or term in seen:
+            continue
+        seen.add(term)
+        out.append(term)
+    return out
+
+
+def _url_with_page_fragment(url: str, page_number: int | None) -> str:
+    base = str(url or "").strip()
+    page = int(page_number or 0)
+    if not base or page <= 0:
+        return base
+    if re.search(r"#page=\d+", base):
+        return base
+    return f"{base}#page={page}"
+
+
 def _retrieve_seed_nodes(
     *,
     postgres: Any,
@@ -607,15 +649,18 @@ def kg_hybrid_graph_rag(
         max_citations=max_citations,
     )
 
-    debug_info = {
+    debug_info: dict[str, Any] = {
         "seed_count": len(seeds),
         "node_count": len(nodes),
         "edge_count": len(edges),
         "citation_count": len(citations),
     }
     if edge_rank_threshold is not None:
-        debug_info["edge_rank_threshold"] = edge_rank_threshold
-        debug_info["edges_filtered_by_threshold"] = edges_filtered
+        debug_info = {
+            **debug_info,
+            "edge_rank_threshold": float(edge_rank_threshold),
+            "edges_filtered_by_threshold": edges_filtered,
+        }
 
     return {
         "query": query,
@@ -635,6 +680,8 @@ def _retrieve_bill_excerpts(
     query: str,
     seed_bill_ids: list[str] | None = None,
     max_bill_citations: int = 8,
+    min_bill_score: float = 0.35,
+    max_chunks_per_bill: int = 1,
 ) -> list[dict[str, Any]]:
     """Retrieve bill excerpts matching the query using hybrid vector + BM25 search.
 
@@ -657,41 +704,55 @@ def _retrieve_bill_excerpts(
         return []
 
     seed_bill_set = set(seed_bill_ids or [])
-    boost_clause = ""
-    boost_params: list[Any] = []
-    if seed_bill_set:
-        boost_clause = ", CASE WHEN be.bill_id IN ({}) THEN 0.1 ELSE 0.0 END AS bill_boost".format(
-            ",".join(["%s"] * len(seed_bill_set))
-        )
-        boost_params = list(seed_bill_set)
+    query_terms = _query_terms(query)
 
-    sql = f"""
+    sql = """
         SELECT be.id, be.bill_id, be.chunk_index, be.text, be.source_url,
                be.embedding <=> (%s::vector) AS distance,
-               b.bill_number, b.title{boost_clause}
+               b.bill_number, b.title,
+               be.page_number,
+               ts_rank_cd(be.tsv, plainto_tsquery('english', %s)) AS bm25_rank
         FROM bill_excerpts be
         JOIN bills b ON be.bill_id = b.id
         WHERE be.embedding IS NOT NULL
-        ORDER BY distance ASC, be.chunk_index ASC
+        ORDER BY distance ASC, bm25_rank DESC, be.chunk_index ASC
         LIMIT %s
     """
 
     try:
-        params = [vector_literal(query_embedding)] + boost_params + [max_bill_citations]
+        candidate_limit = max(max_bill_citations * 8, 24)
+        params = [vector_literal(query_embedding), query, candidate_limit]
         rows = postgres.execute_query(sql, params)
     except Exception:
         rows = []
 
     out: list[dict[str, Any]] = []
+    per_bill_counts: dict[str, int] = {}
     for row in rows:
         distance = float(row[5] or 1.0)
-        score = 1.0 - distance
+        vector_score = max(0.0, 1.0 - distance)
+        bm25_rank = float(row[9] or 0.0) if len(row) > 9 else 0.0
+        bm25_score = min(1.0, bm25_rank)
 
-        boost = float(row[8]) if len(row) > 8 and row[8] is not None else 0.0
-        score = score + boost
+        bill_id = str(row[1] or "")
+        boost = 0.08 if bill_id in seed_bill_set else 0.0
+        score = (0.75 * vector_score) + (0.25 * bm25_score) + boost
+        if score < min_bill_score:
+            continue
 
-        bill_id = row[1]
+        excerpt = str(row[3] or "")
+        excerpt_lower = excerpt.lower()
+        matched_terms = [term for term in query_terms if term in excerpt_lower]
+        if query_terms and not matched_terms:
+            continue
+
+        if per_bill_counts.get(bill_id, 0) >= max_chunks_per_bill:
+            continue
+        per_bill_counts[bill_id] = per_bill_counts.get(bill_id, 0) + 1
+
         citation_id = f"bill:{bill_id}:{row[2]}"
+        page_number = int(row[8] or 0) if len(row) > 8 and row[8] else None
+        source_url = _url_with_page_fragment(str(row[4] or ""), page_number)
 
         out.append(
             {
@@ -699,12 +760,17 @@ def _retrieve_bill_excerpts(
                 "bill_id": bill_id,
                 "bill_number": row[6] or "",
                 "bill_title": row[7] if len(row) > 7 else "",
-                "excerpt": row[3] or "",
-                "source_url": row[4] or "",
+                "excerpt": excerpt,
+                "source_url": source_url,
                 "chunk_index": row[2],
+                "page_number": page_number,
+                "matched_terms": matched_terms[:6],
                 "score": score,
             }
         )
+
+        if len(out) >= max_bill_citations:
+            break
 
     return out
 

@@ -45,10 +45,10 @@ def test_is_bill_url():
     """Test bill URL detection."""
     scraper = BillScraper()
 
-    assert scraper._is_bill_url("/bill/HR1234") == True
-    assert scraper._is_bill_url("/legislation/HR1234") == True
-    assert scraper._is_bill_url("/about") == False
-    assert scraper._is_bill_url("/contact") == False
+    assert scraper._is_bill_url("/bill/HR1234")
+    assert scraper._is_bill_url("/legislation/HR1234")
+    assert not scraper._is_bill_url("/about")
+    assert not scraper._is_bill_url("/contact")
     print("✅ Bill URL detection works")
 
 
@@ -56,18 +56,11 @@ def test_resolve_url():
     """Test URL resolution."""
     scraper = BillScraper()
 
+    assert scraper._resolve_url("/bill/HR1234") == "https://www.parliament.gov.bb/bill/HR1234"
     assert (
-        scraper._resolve_url("/bill/HR1234")
-        == "https://www.parliament.gov.bb/bill/HR1234"
+        scraper._resolve_url("https://example.com/bill/HR1234") == "https://example.com/bill/HR1234"
     )
-    assert (
-        scraper._resolve_url("https://example.com/bill/HR1234")
-        == "https://example.com/bill/HR1234"
-    )
-    assert (
-        scraper._resolve_url("relative/path")
-        == "https://www.parliament.gov.bb/relative/path"
-    )
+    assert scraper._resolve_url("relative/path") == "https://www.parliament.gov.bb/relative/path"
     print("✅ URL resolution works")
 
 
@@ -93,7 +86,7 @@ def test_parse_bill_number_from_url():
 
 def test_entity_extractor_init():
     """Test entity extractor initialization."""
-    extractor = BillEntityExtractor()
+    _extractor = BillEntityExtractor()
     print("✅ Entity extractor initialization works")
 
 

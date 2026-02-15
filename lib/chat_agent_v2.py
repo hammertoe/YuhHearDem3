@@ -134,6 +134,13 @@ def _merge_cite_utterance_ids(
         for key in _citation_lookup_keys(known_id):
             known_lookup[key] = known_id
 
+    known_bill_ids = {
+        _normalize_citation_id(str(c.get("citation_id") or ""))
+        for c in (retrieval or {}).get("bill_citations", [])
+        if isinstance(c, dict)
+    }
+    known_bill_ids.discard("")
+
     suffix_counts: dict[str, int] = {}
     for known_id in known_ids:
         match = re.search(r":(\d+)(?:_\d+)?$", known_id)
@@ -147,6 +154,15 @@ def _merge_cite_utterance_ids(
     for raw in combined:
         uid = _normalize_citation_id(str(raw or ""))
         if not uid:
+            continue
+
+        if uid.startswith("bill:"):
+            if uid not in known_bill_ids:
+                continue
+            if uid in seen:
+                continue
+            seen.add(uid)
+            out.append(uid)
             continue
 
         resolved_uid = uid
@@ -205,6 +221,8 @@ class ChatSource:
     excerpt: str | None = None
     source_url: str | None = None
     chunk_index: int | None = None
+    page_number: int | None = None
+    matched_terms: list[str] | None = None
 
 
 class KGChatAgentV2:
@@ -377,6 +395,8 @@ class KGChatAgentV2:
                             excerpt=bc.get("excerpt", ""),
                             source_url=bc.get("source_url", ""),
                             chunk_index=int(bc.get("chunk_index") or 0),
+                            page_number=int(bc.get("page_number") or 0) or None,
+                            matched_terms=list(bc.get("matched_terms") or []) or None,
                             text=bc.get("excerpt", ""),
                         )
                     )
@@ -419,24 +439,6 @@ class KGChatAgentV2:
                     fetched_ids.add(source.utterance_id)
             if len(out) >= max_sources:
                 break
-
-        for bc in bill_citations:
-            bcid = bc.get("citation_id", "")
-            if bcid and bcid not in fetched_ids and len(out) < max_sources:
-                out.append(
-                    ChatSource(
-                        source_kind="bill_excerpt",
-                        citation_id=str(bcid),
-                        bill_id=bc.get("bill_id", ""),
-                        bill_number=bc.get("bill_number", ""),
-                        bill_title=bc.get("bill_title", ""),
-                        excerpt=bc.get("excerpt", ""),
-                        source_url=bc.get("source_url", ""),
-                        chunk_index=int(bc.get("chunk_index") or 0),
-                        text=bc.get("excerpt", ""),
-                    )
-                )
-                fetched_ids.add(bcid)
 
         return out
 

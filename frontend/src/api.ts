@@ -35,6 +35,8 @@ export type ChatSource = {
   excerpt?: string | null;
   source_url?: string | null;
   chunk_index?: number | null;
+  page_number?: number | null;
+  matched_terms?: string[] | null;
 };
 
 export type ChatResponse = {
