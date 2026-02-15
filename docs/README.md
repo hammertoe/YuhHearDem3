@@ -5,6 +5,7 @@ A comprehensive parliamentary transcription and search system that processes vid
 ## Features
 
 ### Video Transcription
+
 - **Iterative Processing**: Breaks long videos into overlapping segments with context preservation
 - **Speaker Consistency**: Maintains speaker IDs across segments using fuzzy name matching
 - **Legislation Tracking**: Identifies bills and laws discussed in videos
@@ -12,19 +13,22 @@ A comprehensive parliamentary transcription and search system that processes vid
 - **Video Metadata**: Automatically fetches title, duration, and upload date via yt-dlp
 
 ### Knowledge Graph Extraction
+
 - **LLM-First Extraction**: Uses Google Gemini to extract entities and relationships in a single pass
-- **Window-Based Processing**: Concept windows with configurable size and stride (default: 10 utterances, stride 6)
+- **Window-Based Processing**: Concept windows with configurable size and stride (default: 30 utterances, stride 18)
 - **Semantic Relationships**: Captures 15 predicates (11 conceptual + 4 discourse)
 - **Canonical IDs**: Hash-based stable node and edge IDs for consistency
 - **OSS Two-Pass**: Advanced extraction with improved entity resolution
 
 ### Conversational Search
+
 - **Thread-Based Chat**: Persistent conversation threads in PostgreSQL
 - **Hybrid Graph-RAG**: Retrieves compact subgraphs with citations
 - **Follow-Up Suggestions**: Generates contextual follow-up questions
 - **Full Citation Tracing**: Every answer grounded in transcript evidence
 
 ### Search System
+
 - **Hybrid Search**: Combines vector similarity, BM25 full-text, and graph traversal
 - **Temporal Filters**: Search within date ranges
 - **Speaker Filtering**: Filter results by speaker
@@ -55,11 +59,13 @@ A comprehensive parliamentary transcription and search system that processes vid
 ## Quick Start
 
 ### Prerequisites
+
 - Python 3.13+
 - PostgreSQL 16+ with pgvector
 - Google AI API key
 
 ### Installation
+
 ```bash
 # Clone and install
 git clone https://github.com/anomalyco/YuhHearDem3.git
@@ -77,16 +83,19 @@ export GOOGLE_API_KEY="your-api-key"
 ```
 
 ### Transcribe a Video
+
 ```bash
 python transcribe.py --order-file order.txt --segment-minutes 30
 ```
 
 ### Extract Knowledge Graph
+
 ```bash
 python scripts/kg_extract_from_video.py --youtube-video-id "VIDEO_ID"
 ```
 
 ### Start Chat API
+
 ```bash
 python -m uvicorn api.search_api:app --reload --host 0.0.0.0 --port 8000
 ```

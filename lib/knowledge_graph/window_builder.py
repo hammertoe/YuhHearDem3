@@ -9,8 +9,8 @@ from lib.db.postgres_client import PostgresClient
 from lib.db.pgvector import vector_literal
 from lib.embeddings.google_client import GoogleEmbeddingClient
 
-DEFAULT_WINDOW_SIZE = 10
-DEFAULT_STRIDE = 6
+DEFAULT_WINDOW_SIZE = 30
+DEFAULT_STRIDE = 18
 DEFAULT_CONTEXT_SIZE = 3
 MIN_UTTERANCE_LENGTH = 15
 
@@ -55,9 +55,7 @@ class Window:
         lines: list[str] = []
         for u in self.utterances:
             ts = u.timestamp_str or ""
-            lines.append(
-                f"[utterance_id={u.id} t={ts} speaker_id={u.speaker_id}] {u.text}"
-            )
+            lines.append(f"[utterance_id={u.id} t={ts} speaker_id={u.speaker_id}] {u.text}")
         return "\n".join(lines)
 
     @property
@@ -160,9 +158,7 @@ class WindowBuilder:
             filter_short: Filter out ultra-short utterances
         """
         if filter_short:
-            utterances = [
-                u for u in utterances if len(u.text) >= self.MIN_UTTERANCE_LENGTH
-            ]
+            utterances = [u for u in utterances if len(u.text) >= self.MIN_UTTERANCE_LENGTH]
 
         windows = []
         start_idx = 0
@@ -195,9 +191,7 @@ class WindowBuilder:
         """Build concept windows for a video."""
         utterances = self.fetch_utterances(youtube_video_id)
 
-        concept_windows = self.build_concept_windows(
-            utterances, window_size, stride, filter_short
-        )
+        concept_windows = self.build_concept_windows(utterances, window_size, stride, filter_short)
 
         return concept_windows
 

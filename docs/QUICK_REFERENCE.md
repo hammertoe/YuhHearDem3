@@ -3,6 +3,7 @@
 ## Essential Commands
 
 ### Transcription
+
 ```bash
 # Basic transcription
 python transcribe.py --order-file order.txt
@@ -18,6 +19,7 @@ python transcribe.py --order-file order.txt --max-segments 2
 ```
 
 ### Knowledge Graph Extraction
+
 ```bash
 # Extract KG from video
 python scripts/kg_extract_from_video.py --youtube-video-id "VIDEO_ID"
@@ -33,6 +35,7 @@ python scripts/kg_extract_from_video.py --youtube-video-id "VIDEO_ID" --debug
 ```
 
 ### API Server
+
 ```bash
 # Start chat API
 python -m uvicorn api.search_api:app --reload --host 0.0.0.0 --port 8000
@@ -42,6 +45,7 @@ CHAT_TRACE=1 python -m uvicorn api.search_api:app --reload
 ```
 
 ### Cron Transcription
+
 ```bash
 # Process watchlist
 python scripts/cron_transcription.py --process
@@ -57,6 +61,7 @@ python scripts/cron_transcription.py --remove "VIDEO_ID"
 ```
 
 ### Database Management
+
 ```bash
 # Clear KG tables
 python scripts/clear_kg.py --yes
@@ -69,6 +74,7 @@ python scripts/backfill_speaker_video_roles.py
 ```
 
 ### Order Papers
+
 ```bash
 # Ingest order paper PDF
 python scripts/ingest_order_paper_pdf.py --file "order_paper.pdf"
@@ -146,6 +152,7 @@ mypy lib/
 ## Common Options
 
 ### transcribe.py
+
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--order-file | Path` | Required to order file |
@@ -155,11 +162,12 @@ mypy lib/
 | `--output-file` | Varies | Output file path |
 
 ### kg_extract_from_video.py
+
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--youtube-video-id` | Required | Video ID |
-| `--window-size` | 10 | Utterances per window |
-| `--stride` | 6 | Utterances between windows |
+| `--window-size` | 30 | Utterances per window |
+| `--stride` | 18 | Utterances between windows |
 | `--max-windows` | None | Limit windows |
 | `--model` | gemini-2.5-flash | Model to use |
 | `--debug` | False | Save failed responses |
@@ -167,16 +175,19 @@ mypy lib/
 ## Database Tables
 
 ### Chat Schema
+
 - `chat_threads` - Conversation threads
 - `chat_messages` - Messages with role/content
 - `chat_thread_state` - Persisted state
 
 ### KG Schema
+
 - `kg_nodes` - Canonical nodes
 - `kg_aliases` - Alias index
 - `kg_edges` - Edges with provenance
 
 ### Transcript Schema
+
 - `paragraphs` - Paragraphs with embeddings
 - `sentences` - Sentences with provenance
 - `speakers` - Speaker information

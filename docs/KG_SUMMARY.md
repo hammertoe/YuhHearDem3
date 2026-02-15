@@ -17,6 +17,7 @@ The knowledge graph stores canonical entities and relationships extracted from p
 ## Relationship Types
 
 ### Conceptual (11 predicates)
+
 | Predicate | Description |
 |-----------|-------------|
 | `AMENDS` | Legislation amends another |
@@ -32,6 +33,7 @@ The knowledge graph stores canonical entities and relationships extracted from p
 | `PROPOSES` | Proposes legislation/idea |
 
 ### Discourse (4 predicates)
+
 | Predicate | Description |
 |-----------|-------------|
 | `RESPONDS_TO` | Speaker response |
@@ -42,20 +44,25 @@ The knowledge graph stores canonical entities and relationships extracted from p
 ## ID Generation
 
 ### Node IDs
+
 ```
 kg_<hash(type:label)>[:12]
 ```
+
 Example: `kg_abc123def456`
 
 ### Edge IDs
+
 ```
 kge_<hash(source|predicate|target|video|seconds|evidence)>[:12]
 ```
+
 Example: `kge_xyz789abc012`
 
 ## Provenance
 
 Each edge includes:
+
 - `youtube_video_id`: Source video
 - `earliest_timestamp_str`: When mentioned
 - `earliest_seconds`: Timestamp in seconds
@@ -68,6 +75,7 @@ Each edge includes:
 ## Sample Data
 
 ### Nodes
+
 ```json
 {
   "id": "kg_abc123def456",
@@ -79,6 +87,7 @@ Each edge includes:
 ```
 
 ### Edges
+
 ```json
 {
   "id": "kge_xyz789abc012",
@@ -98,11 +107,13 @@ Each edge includes:
 ## Storage
 
 ### Tables
+
 - `kg_nodes`: Canonical nodes with embeddings
 - `kg_aliases`: Normalized alias index for entity linking
 - `kg_edges`: Edges with full provenance
 
 ### Indexes
+
 - `kg_nodes.label`: Fast lookup by label
 - `kg_nodes.type`: Filter by node type
 - `kg_aliases.alias_norm`: Fuzzy matching
@@ -111,7 +122,7 @@ Each edge includes:
 
 ## Extraction Process
 
-1. **Window Building**: Group utterances (default: 10, stride 6)
+1. **Window Building**: Group utterances (default: 30, stride 18)
 2. **LLM Extraction**: Extract entities and relationships
 3. **Canonicalization**: Generate stable IDs
 4. **Vector Context**: Retrieve similar known nodes
@@ -122,8 +133,8 @@ Each edge includes:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `window_size` | 10 | Utterances per window |
-| `stride` | 6 | Advance between windows |
+| `window_size` | 30 | Utterances per window |
+| `stride` | 18 | Advance between windows |
 | `top_k` | 25 | Similar nodes for context |
 | `max_edges` | 60 | Max edges per extraction |
 

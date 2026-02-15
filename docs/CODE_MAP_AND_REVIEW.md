@@ -179,6 +179,7 @@ lib/order_papers/*.py
 ## Key Design Patterns
 
 ### 1. Canonical ID Generation
+
 ```python
 # Hash-based stable IDs for consistency
 kg_<hash(type:label)>[:12]  # Node IDs
@@ -186,14 +187,16 @@ kge_<hash(source|predicate|target|video|seconds|evidence)>[:12]  # Edge IDs
 ```
 
 ### 2. Window-Based Processing
+
 ```python
 # Configurable window size and stride
-window_size = 10  # utterances per window
-stride = 6  # utterances between windows
+window_size = 30  # utterances per window
+stride = 18  # utterances between windows
 # 40% overlap for continuity
 ```
 
 ### 3. Thread-Based Chat
+
 ```python
 # Persistent conversation threads
 chat_threads (table)
@@ -211,6 +214,7 @@ chat_messages (table)
 ```
 
 ### 4. Citation Tracking
+
 ```python
 # Every answer grounded in evidence
 answer → cite_utterance_ids → transcript sentences

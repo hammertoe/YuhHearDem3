@@ -47,18 +47,17 @@ def main():
         "--window-size",
         type=int,
         default=DEFAULT_WINDOW_SIZE,
-        help="Window size",
+        help=f"Window size (default: {DEFAULT_WINDOW_SIZE})",
     )
     parser.add_argument(
-        "--stride", type=int, default=DEFAULT_STRIDE, help="Window stride"
+        "--stride",
+        type=int,
+        default=DEFAULT_STRIDE,
+        help=f"Window stride (default: {DEFAULT_STRIDE})",
     )
-    parser.add_argument(
-        "--max-windows", type=int, help="Maximum windows to process (for testing)"
-    )
+    parser.add_argument("--max-windows", type=int, help="Maximum windows to process (for testing)")
     parser.add_argument("--run-id", help="KG run ID (auto-generated if not provided)")
-    parser.add_argument(
-        "--top-k", type=int, default=25, help="Top K candidate nodes to retrieve"
-    )
+    parser.add_argument("--top-k", type=int, default=25, help="Top K candidate nodes to retrieve")
     parser.add_argument(
         "--no-filter-short",
         action="store_true",
@@ -128,9 +127,7 @@ def main():
                 all_results.append(result)
 
                 if result.parse_success:
-                    print(
-                        f"  ✅ {len(result.nodes_new)} new nodes, {len(result.edges)} edges"
-                    )
+                    print(f"  ✅ {len(result.nodes_new)} new nodes, {len(result.edges)} edges")
                     if result.pass1_elapsed_s is not None:
                         print(
                             f"     Pass 1: {result.pass1_elapsed_s:.2f}s ({result.pass1_edge_count} edges, {result.pass1_violations_count} violations)"
@@ -148,23 +145,15 @@ def main():
                             f.write(f"Window text:\n{window.text}\n\n")
                             if result.prompt_pass1:
                                 f.write(f"Pass 1 prompt:\n{result.prompt_pass1}\n\n")
-                            f.write(
-                                f"Raw response pass 1:\n{result.raw_response_pass1}\n\n"
-                            )
+                            f.write(f"Raw response pass 1:\n{result.raw_response_pass1}\n\n")
                             if result.reasoning_pass1:
-                                f.write(
-                                    f"Reasoning pass 1:\n{result.reasoning_pass1}\n\n"
-                                )
+                                f.write(f"Reasoning pass 1:\n{result.reasoning_pass1}\n\n")
                             if result.prompt_pass2:
                                 f.write(f"Pass 2 prompt:\n{result.prompt_pass2}\n\n")
                             if result.raw_response_pass2:
-                                f.write(
-                                    f"Raw response pass 2:\n{result.raw_response_pass2}\n\n"
-                                )
+                                f.write(f"Raw response pass 2:\n{result.raw_response_pass2}\n\n")
                             if result.reasoning_pass2:
-                                f.write(
-                                    f"Reasoning pass 2:\n{result.reasoning_pass2}\n\n"
-                                )
+                                f.write(f"Reasoning pass 2:\n{result.reasoning_pass2}\n\n")
                             f.write(f"Error:\n{result.error}\n")
                         print(f"  🔧 Debug info saved to {debug_file}")
 
@@ -207,9 +196,7 @@ def main():
                     f"Edges skipped (invalid speaker ref): {stats['edges_skipped_invalid_speaker_ref']}"
                 )
             if stats["edges_skipped_missing_nodes"] > 0:
-                print(
-                    f"Edges skipped (missing nodes): {stats['edges_skipped_missing_nodes']}"
-                )
+                print(f"Edges skipped (missing nodes): {stats['edges_skipped_missing_nodes']}")
             print(f"Run ID: {run_id}")
             print("=" * 60)
 
