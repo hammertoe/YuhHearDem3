@@ -1,7 +1,9 @@
 # Chat Trace Logging
 
 ## Overview
+
 Chat trace logging provides detailed console output for debugging and understanding of chat agent's behavior during request processing. This is useful for:
+
 - Debugging why LLM made certain tool calls
 - Understanding what context is being sent to LLM
 - Verifying that citations are being properly extracted and filtered
@@ -9,7 +11,9 @@ Chat trace logging provides detailed console output for debugging and understand
 - Timing analysis for LLM calls and tool executions
 
 ## Enabling Tracing
+
 Set environment variable `CHAT_TRACE` to enable console trace output:
+
 ```bash
 CHAT_TRACE=1 python -m uvicorn api.search_api:app --reload
 # or
@@ -19,7 +23,9 @@ CHAT_TRACE=1 python scripts/your_script.py
 Valid values for `CHAT_TRACE`: `1`, `true`, `on`, `True`, `ON` (case-insensitive)
 
 ## Disabling Model Thinking
+
 Set environment variable `ENABLE_THINKING` to enable/disable model thinking:
+
 ```bash
 # Disable thinking (faster, no thoughts in response)
 ENABLE_THINKING=0 python -m uvicorn api.search_api:app --reload
@@ -45,7 +51,9 @@ When tracing is enabled, the following information is logged:
 > **Note**: Raw content and response logging can produce large output for complex conversations. This is intended for debugging and may flood console in production.
 
 ## Trace Output Format
+
 Trace logs use a consistent format with emoji prefixes for easy scanning:
+
 - `🔍 [TRACE {id}] {section}` - Trace section from KG agent loop
 - `🔍 [CHAT_TRACE] {section}` - Trace section from chat agent
 - `=` separators for visual grouping of sections
@@ -138,6 +146,7 @@ Rules:
 ============================================================
 🔍 [TRACE a1b2c3d4] PARSING LLM RESPONSE (iteration 0)
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Function Calls
   1 call(s): ['kg_hybrid_graph_rag']
 ============================================================
@@ -145,6 +154,7 @@ Rules:
 ============================================================
 🔍 [TRACE a1b2c3d4] EXECUTING TOOLS (iteration 1)
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Tool Call
   kg_hybrid_graph_rag(query=water management, hops=1, seed_k=8)
 🔍 [TRACE a1b2c3d4] Tool Duration
@@ -161,6 +171,7 @@ Rules:
 ============================================================
 🔍 [TRACE a1b2c3d4] ITERATION 1 - LLM CALL
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Context Summary
   3 content parts
     [0] system: 1 part(s)
@@ -193,6 +204,7 @@ Rules:
 🔍 [TRACE a1b2c3d4] RAW LLM RESPONSE
   Length: 892 chars
   Content:
+
 ```json
 {
   "answer": "Ministers discussed water management extensively...",
@@ -206,6 +218,7 @@ Rules:
 ============================================================
 🔍 [TRACE a1b2c3d4] PARSING LLM RESPONSE (iteration 1)
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Function Calls
   None - loop complete
 ============================================================
@@ -213,6 +226,7 @@ Rules:
 ============================================================
 🔍 [TRACE a1b2c3d4] FINAL ANSWER PARSING
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Final Answer Summary
   length=245 chars, cite_ids=['utt_123', 'utt_456', 'utt_789'], focus_nodes=['kg_water', 'kg_management']
 🔍 [TRACE a1b2c3d4] Total Duration
@@ -222,6 +236,7 @@ Rules:
 ============================================================
 🔍 [CHAT_TRACE] RESPONSE SUMMARY
 ============================================================
+
 🔍 [CHAT_TRACE] Assistant Message ID
   b2c3d4e5-f6a7-8901-bcde-f0123456789a
 🔍 [CHAT_TRACE] Answer Length
@@ -233,6 +248,7 @@ Rules:
 🔍 [CHAT_TRACE] Sources Count
   8 items
 ============================================================
+
 ```
 
 Valid values for `CHAT_TRACE`: `1`, `true`, `on`, `True`, `ON` (case-insensitive)
@@ -248,9 +264,11 @@ Each request gets a unique 8-character trace ID for correlation across component
 ## Example Trace Output
 
 ```
+
 ============================================================
 🔍 [CHAT_TRACE] PROCESS MESSAGE START
 ============================================================
+
 🔍 [CHAT_TRACE] Thread ID
   550e8d4f-e123-4567-89ab-cdef01234567
 🔍 [CHAT_TRACE] User Message ID
@@ -262,6 +280,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [CHAT_TRACE] AGENT LOOP EXECUTION
 ============================================================
+
 🔍 [CHAT_TRACE] History Size
   0 messages
 ============================================================
@@ -269,6 +288,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [TRACE a1b2c3d4] KG AGENT LOOP START
 ============================================================
+
 🔍 [TRACE a1b2c3d4] User Query
   What did ministers say about water management? (50 chars)
 🔍 [TRACE a1b2c3d4] History
@@ -278,6 +298,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [TRACE a1b2c3d4] ITERATION 0 - LLM CALL
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Context Summary
   2 content parts
     [0] system: [{'type': 'text', 'preview': 'You are YuhHearDem...'}]
@@ -287,6 +308,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [TRACE a1b2c3d4] PARSING LLM RESPONSE (iteration 0)
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Function Calls
   1 call(s): ['kg_hybrid_graph_rag']
 ============================================================
@@ -294,6 +316,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [TRACE a1b2c3d4] EXECUTING TOOLS (iteration 1)
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Tool Call
   kg_hybrid_graph_rag(query=water management, hops=1, seed_k=8)
 🔍 [TRACE a1b2c3d4] Tool Result Summary
@@ -329,6 +352,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [TRACE a1b2c3d4] ITERATION 1 - LLM CALL
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Context Summary
   3 content parts
 ============================================================
@@ -336,6 +360,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [TRACE a1b2c3d4] PARSING LLM RESPONSE (iteration 1)
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Function Calls
   None - loop complete
 ============================================================
@@ -343,6 +368,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [TRACE a1b2c3d4] FINAL ANSWER PARSING
 ============================================================
+
 🔍 [TRACE a1b2c3d4] Final Answer Summary
   length=245 chars, cite_ids=['utt_123', 'utt_456', 'utt_789'], focus_nodes=['kg_water', 'kg_management']
 ============================================================
@@ -350,6 +376,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 ============================================================
 🔍 [CHAT_TRACE] RESPONSE SUMMARY
 ============================================================
+
 🔍 [CHAT_TRACE] Assistant Message ID
   b2c3d4e5-f6a7-8901-bcde-f0123456789a
 🔍 [CHAT_TRACE] Answer Length
@@ -361,6 +388,7 @@ Each request gets a unique 8-character trace ID for correlation across component
 🔍 [CHAT_TRACE] Sources Count
   8 items
 ============================================================
+
 ```
 
 ## Trace Sections Explained

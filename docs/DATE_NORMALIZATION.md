@@ -7,23 +7,29 @@ Added automatic normalization of relative date entities in the knowledge graph e
 ## Key Features
 
 ### 1. Relative Date Detection
+
 Identifies relative date expressions containing keywords:
+
 - today, yesterday, tomorrow
 - last, next, ago, recent
 - this, current
 
 ### 2. Anchor-Based Resolution
+
 Uses video's `upload_date` from `video_metadata` as anchor point for resolving relative dates.
 
 ### 3. Smart Date Parsing
+
 - Primary: Uses `dateparser` library for flexible date parsing
 - Secondary: Custom handling for "last [Month]" patterns (e.g., "last December" → "2025-12")
 - Fallback: Skips failed resolutions silently
 
 ### 4. Date Validation
+
 Validates that resolved dates are within reasonable range (±100 years from current date).
 
 ### 5. Format-Based Output
+
 - Year-month precision: "2025-12" (when day is not significant)
 - Full date: "2025-12-01" (when specific day is meaningful)
 
@@ -39,12 +45,15 @@ Validates that resolved dates are within reasonable range (±100 years from curr
 ## Technical Changes
 
 ### New Dependencies
+
 ```bash
 pip install dateparser
 ```
 
 ### Updated Data Structures
+
 **Entity dataclass** now includes:
+
 ```python
 resolved_date: Optional[str] = None  # Normalized absolute date
 is_relative: bool = False           # Whether normalization was attempted
@@ -76,14 +85,17 @@ is_relative: bool = False           # Whether normalization was attempted
 ### Modified Methods
 
 **Extraction pipeline in `kg_extractor.py`**:
+
 - Extracts anchor date from `video_metadata.upload_date`
 - **Fails hard** if no valid anchor date found (as requested)
 - Calls `normalize_relative_dates()` after entity extraction
 
 **Output formatting**:
+
 - Includes `resolved_date` and `is_relative` fields for DATE entities in output
 
 **HTML Export** (`kg_export_html.py`):
+
 - Shows resolved date in node tooltip when available
 
 ## Error Handling
@@ -95,6 +107,7 @@ is_relative: bool = False           # Whether normalization was attempted
 ## Testing
 
 Tested with various date expressions:
+
 ```python
 "today" → "2026-01-06"  ✓
 "last year" → "2025"  ✓
@@ -114,6 +127,7 @@ Tested with various date expressions:
 ## Requirements Updated
 
 **README.md** updated to include:
+
 - Date normalization feature in features list
 - Dedicated "Date Normalization" section with examples
 - `dateparser` in requirements

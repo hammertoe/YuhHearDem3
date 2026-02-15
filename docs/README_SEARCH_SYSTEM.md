@@ -3,6 +3,7 @@
 ## Overview
 
 YuhHearDem3 includes a hybrid search system combining:
+
 - **Vector Search**: Semantic similarity using pgvector
 - **BM25 Full-Text**: Traditional keyword search
 - **Graph Traversal**: Multi-hop relationship expansion
@@ -49,16 +50,19 @@ YuhHearDem3 includes a hybrid search system combining:
 ## Three-Tier Storage
 
 ### Tier 1: Paragraphs
+
 - Full paragraphs with speaker attribution
 - 768-dimensional embeddings
 - Grouped consecutive sentences by same speaker
 
 ### Tier 2: Entities
+
 - Named entities (speakers, organizations, legislation)
 - Knowledge graph nodes with embeddings
 - Aliases for entity linking
 
 ### Tier 3: Sentences
+
 - Individual sentences
 - Full-text search (BM25)
 - Provenance (video, timestamp, speaker)
@@ -66,6 +70,7 @@ YuhHearDem3 includes a hybrid search system combining:
 ## Database Queries
 
 ### Vector Search (pgvector)
+
 ```sql
 SELECT id, text, embedding <=> query_vector AS distance
 FROM paragraphs
@@ -74,6 +79,7 @@ LIMIT 20;
 ```
 
 ### Full-Text Search (BM25)
+
 ```sql
 SELECT id, text,
        ts_rank(tsv, to_tsquery('english', query)) AS rank
@@ -84,6 +90,7 @@ LIMIT 20;
 ```
 
 ### Graph Traversal
+
 ```sql
 -- Find related entities within N hops
 SELECT DISTINCT target
@@ -99,6 +106,7 @@ LIMIT 50;
 ## Hybrid Graph-RAG
 
 ### Process
+
 1. **Seed Retrieval**: Vector search over `kg_nodes`
 2. **Graph Expansion**: N-hop traversal from seed nodes
 3. **Edge Collection**: Gather all edges in expanded subgraph
@@ -106,6 +114,7 @@ LIMIT 50;
 5. **Subgraph Assembly**: Compact representation for LLM
 
 ### Output Schema
+
 ```json
 {
   "query": "...",
@@ -119,6 +128,7 @@ LIMIT 50;
 ## API Endpoints
 
 ### POST /search
+
 ```json
 {
   "query": "healthcare reform",
@@ -128,6 +138,7 @@ LIMIT 50;
 ```
 
 ### POST /chat
+
 ```json
 {
   "thread_id": "uuid",

@@ -18,6 +18,7 @@ The `docs/` directory contains comprehensive project documentation:
 | [CHAT_TRACE.md](docs/CHAT_TRACE.md) | Chat trace logging documentation | 456 |
 
 **Quick Links:**
+
 - Start here: [README.md](docs/README.md) for transcription, KG extraction, and chat
 - For development: [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) for commands
 - For architecture: [COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md) for full system overview
@@ -27,6 +28,7 @@ The `docs/` directory contains comprehensive project documentation:
 ## Build, Lint, and Type Check Commands
 
 ### Linting (ruff)
+
 ```bash
 # Run linter
 ruff check .
@@ -42,6 +44,7 @@ ruff check . --output-format=full
 ```
 
 ### Type Checking (mypy)
+
 ```bash
 # Run type checker on lib modules
 mypy lib/
@@ -56,21 +59,25 @@ mypy lib/ --show-error-codes
 ### Running Scripts
 
 **Transcribe video (main script):**
+
 ```bash
 python transcribe.py --order-file order.txt --segment-minutes 30 --start-minutes 0
 ```
 
 **Extract knowledge graph from video:**
+
 ```bash
 python scripts/kg_extract_from_video.py --youtube-video-id "VIDEO_ID" --window-size 10 --stride 6
 ```
 
 **Chat API server:**
+
 ```bash
 python -m uvicorn api.search_api:app --reload --host 0.0.0.0 --port 8000
 ```
 
 **Cron transcription:**
+
 ```bash
 python scripts/cron_transcription.py --process
 python scripts/cron_transcription.py --list
@@ -78,6 +85,7 @@ python scripts/cron_transcription.py --add "VIDEO_ID"
 ```
 
 **Migrate chat schema:**
+
 ```bash
 python scripts/migrate_chat_schema.py
 ```
@@ -85,17 +93,20 @@ python scripts/migrate_chat_schema.py
 ### Testing
 
 **Run all tests:**
+
 ```bash
 python -m pytest tests/ -v
 ```
 
 **Run specific test file:**
+
 ```bash
 python -m pytest tests/test_chat_agent_v2_unit.py -v
 python -m pytest tests/test_kg_agent_loop_unit.py -v
 ```
 
 **Quick manual testing:**
+
 1. Run the script with `--max-segments 2` for quick iteration
 2. Verify JSON output structure matches expected format
 3. Check for runtime errors with `python transcribe.py --help`
@@ -103,12 +114,14 @@ python -m pytest tests/test_kg_agent_loop_unit.py -v
 ## Code Style Guidelines
 
 ### Imports
+
 - **Order**: Standard library → third-party → local (if any)
 - **No blank line** between imports from the same package
 - Use `from collections.abc import Callable` for types
 - Import from `typing` module for backward compatibility if needed
 
 Example:
+
 ```python
 import argparse
 import json
@@ -122,6 +135,7 @@ from google.genai.types import GenerateContentConfig, Part
 ```
 
 ### Type Hints
+
 - **Use modern Python 3.13+ syntax**: `dict[str, str]` instead of `Dict[str, str]`
 - **Always annotate function parameters and return types**
 - Use `| None` for optional types instead of `Optional[str]`
@@ -130,6 +144,7 @@ from google.genai.types import GenerateContentConfig, Part
 - Use `pydantic.BaseModel` for validated data structures
 
 Example:
+
 ```python
 from dataclasses import dataclass
 from datetime import timedelta
@@ -145,6 +160,7 @@ def get_video_duration(video: Video) -> timedelta | None:
 ```
 
 ### Naming Conventions
+
 - **Functions and variables**: `snake_case`
 - **Classes**: `CamelCase`
 - **Constants**: `UPPER_SNAKE_CASE`
@@ -153,6 +169,7 @@ def get_video_duration(video: Video) -> timedelta | None:
 - **Enum classes**: `CamelCase` with `UPPER_CASE` values
 
 Example:
+
 ```python
 class Model(enum.Enum):
     GEMINI_2_5_FLASH = "gemini-2.5-flash"
@@ -165,11 +182,13 @@ def format_known_speakers(known_speakers: dict) -> str:
 ```
 
 ### Docstrings
+
 - **Keep it simple**: One-line triple-quoted string on first line of function
 - Use Google-style docstrings only for complex functions needing more explanation
 - No docstring for trivial functions (obvious from name and signature)
 
 Example:
+
 ```python
 def get_video_metadata_ytdlp(video: Video) -> VideoMetadataInfo:
     """Fetch video metadata using yt-dlp."""
@@ -179,6 +198,7 @@ def get_video_metadata_ytdlp(video: Video) -> VideoMetadataInfo:
 ```
 
 ### Error Handling
+
 - **Use try/except** for operations that may fail (API calls, file I/O)
 - **Print errors** to console with context (e.g., `print(f"Error: {e}")`)
 - **Return empty/default values** on failure when appropriate (e.g., `return []`)
@@ -186,6 +206,7 @@ def get_video_metadata_ytdlp(video: Video) -> VideoMetadataInfo:
 - Use **tenacity** for retrying transient errors (API rate limits)
 
 Example:
+
 ```python
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -200,30 +221,35 @@ def extract_entities(self, transcript_entry: dict) -> list[tuple]:
 ```
 
 ### Formatting and Line Length
+
 - **Target line length**: 88-100 characters (flexible for URLs, long strings)
 - ruff will auto-fix most issues with `ruff check . --fix`
 - Use **f-strings** for string formatting (not `.format()` or `%`)
 - Use **match/case** instead of if/elif chains for complex conditionals
 
 ### File Organization
+
 - **Entry point**: Always use `if __name__ == "__main__":` pattern
 - **argparse** setup in main() or at module level if simple
 - **Data models**: Define after imports, before functions
 - **Helper functions**: Organize logically, typically grouped by purpose
 
 ### API Integration
+
 - Use **tenacity** decorators for retry logic on API calls
 - Set sensible **timeout** and **max retries** (3-7 attempts)
 - Handle **ClientError** specifically for API errors
 - Log/retry transient errors (429 rate limits, 503 service unavailable)
 
 ### Console Output
+
 - **Progress indicators**: Use `--batch-size` for periodic updates
 - **Error prefixes**: Use `❌` for errors, `⚠️` for warnings, `✅` for success
 - Use **print()** for all output (no logging module currently)
 - Section headers with `=` or `─` separators for readability
 
 ### Pattern Matching
+
 Use modern Python 3.10+ match/case for cleaner conditional logic:
 
 ```python
@@ -239,6 +265,7 @@ match err.code:
 ## Project-Specific Patterns
 
 ### Video Transcription (transcribe.py)
+
 - **Enum for video sources**: `Video` class with YouTube URLs
 - **Enum for models**: `Model` with Gemini variants
 - **Time formats**: Use `timedelta` for all time calculations
@@ -246,6 +273,7 @@ match err.code:
 - **Legislation IDs**: Format `L_BILLNUMBER_<number>`
 
 ### Knowledge Graph (lib/knowledge_graph/)
+
 - **LLM-first approach**: Single pass extraction using Gemini, no NER pre-filtering
 - **Window-based extraction**: Concept windows (10 utterances, stride 6) with 40% overlap
 - **OSS two-pass extraction**: `oss_two_pass.py` for improved entity/relation extraction
@@ -257,6 +285,7 @@ match err.code:
 - **Node types**: `foaf:Person`, `schema:Legislation`, `schema:Organization`, `schema:Place`, `skos:Concept`
 
 ### Chat Agent (lib/chat_agent_v2.py)
+
 - **KGChatAgentV2**: Main chat agent class
 - **Thread-based conversations**: Creates and manages chat threads in PostgreSQL
 - **KGAgentLoop**: Handles LLM tool calls for knowledge graph retrieval
@@ -264,15 +293,18 @@ match err.code:
 - **Tracing**: `CHAT_TRACE=1` environment variable enables detailed debug output
 
 ### Order Papers (lib/order_papers/)
+
 - **PDF parsing**: Extracts order paper content from parliamentary PDFs
 - **Video matching**: Matches order papers to YouTube videos
 - **Role extraction**: Extracts speaker roles from order papers
 
 ### Clear KG Tables (scripts/clear_kg.py)
+
 - Use `python scripts/clear_kg.py --yes` to clear all KG tables for fresh extraction
 - Clears: `kg_edges`, `kg_aliases`, `kg_nodes` (in that order due to FK constraints)
 
 ## Environment Setup
+
 ```bash
 # Create virtual environment
 python -m venv venv
@@ -286,6 +318,7 @@ export GOOGLE_API_KEY="your-api-key"
 ```
 
 ## Key Dependencies
+
 - **google-genai**: Gemini API client
 - **fastapi**: Web framework for chat API
 - **uvicorn**: ASGI server
@@ -299,16 +332,19 @@ export GOOGLE_API_KEY="your-api-key"
 ## Database Schema
 
 ### Chat Schema Tables
+
 - `chat_threads`: Conversation threads
 - `chat_messages`: Individual messages with role and content
 - `chat_thread_state`: Persisted state for follow-up questions
 
 ### KG Schema Tables
+
 - `kg_nodes`: Knowledge graph nodes with embeddings
 - `kg_aliases`: Normalized alias index
 - `kg_edges`: Knowledge graph edges with provenance
 
 ### Transcript Schema Tables
+
 - `paragraphs`: Transcript paragraphs with embeddings
 - `sentences`: Individual sentences (no embeddings)
 - `speakers`: Speaker information

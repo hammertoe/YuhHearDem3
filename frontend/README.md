@@ -28,7 +28,7 @@ npm install
 npm run dev
 \`\`\`
 
-The app will be available at \`http://localhost:3000\`
+The app will be available at \`<http://localhost:3000\`>
 
 ## Project Structure
 
@@ -64,6 +64,7 @@ The frontend expects the following backend API endpoints:
 ## Features
 
 ### Search Page
+
 - Free-text search with filters
 - Date range filtering
 - Speaker filtering
@@ -71,12 +72,14 @@ The frontend expects the following backend API endpoints:
 - Click result to open video player at timestamp
 
 ### Video Player
+
 - Embedded YouTube player
 - Jump to specific timestamp
 - Close button to return to results
 - Display jump confirmation
 
 ### Speaker Profiles
+
 - List all speakers with stats
 - Click speaker to see details
 - Recent contributions
