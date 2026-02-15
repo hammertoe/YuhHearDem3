@@ -19,9 +19,7 @@ def canonicalize_and_store(
     *,
     postgres: PostgresClient,
     embedding: GoogleEmbeddingClient,
-    results: list[
-        tuple[Window, list[dict[str, Any]], list[dict[str, Any]], str, bool, str | None]
-    ],
+    results: list[tuple[Window, list[dict[str, Any]], list[dict[str, Any]], str, bool, str | None]],
     youtube_video_id: str,
     kg_run_id: str,
     extractor_model: str,
@@ -187,13 +185,11 @@ def canonicalize_and_store(
             target_id = temp_to_canonical.get(target_ref, target_ref)
 
             if not (
-                edge["source_ref"].startswith("speaker_")
-                or edge["source_ref"] in temp_to_canonical
+                edge["source_ref"].startswith("speaker_") or edge["source_ref"] in temp_to_canonical
             ):
                 stats["links_to_known"] += 1
             if not (
-                edge["target_ref"].startswith("speaker_")
-                or edge["target_ref"] in temp_to_canonical
+                edge["target_ref"].startswith("speaker_") or edge["target_ref"] in temp_to_canonical
             ):
                 stats["links_to_known"] += 1
 
@@ -274,9 +270,7 @@ def canonicalize_and_store(
         )
         existing_ids = {row[0] for row in existing_rows}
 
-        filtered_edges = [
-            e for e in edges_data if e[1] in existing_ids and e[3] in existing_ids
-        ]
+        filtered_edges = [e for e in edges_data if e[1] in existing_ids and e[3] in existing_ids]
         stats["edges_skipped_missing_nodes"] = len(edges_data) - len(filtered_edges)
         stats["edges"] = len(filtered_edges)
 
@@ -323,13 +317,9 @@ def _embed_new_nodes(
 
     ids = [x[0] for x in to_embed]
     texts = [x[1] for x in to_embed]
-    embeddings = embedding.generate_embeddings_batch(
-        texts, task_type="RETRIEVAL_DOCUMENT"
-    )
+    embeddings = embedding.generate_embeddings_batch(texts, task_type="RETRIEVAL_DOCUMENT")
 
-    update_rows = [
-        (vector_literal(vec), node_id) for node_id, vec in zip(ids, embeddings)
-    ]
+    update_rows = [(vector_literal(vec), node_id) for node_id, vec in zip(ids, embeddings)]
     postgres.execute_batch(
         """
         UPDATE kg_nodes

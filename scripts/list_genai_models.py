@@ -14,9 +14,7 @@ def main() -> int:
         project = os.getenv("VERTEX_PROJECT")
         location = os.getenv("VERTEX_LOCATION")
         if not project or not location:
-            print(
-                "❌ EMBEDDING_PROVIDER=vertex_ai but VERTEX_PROJECT/VERTEX_LOCATION not set"
-            )
+            print("❌ EMBEDDING_PROVIDER=vertex_ai but VERTEX_PROJECT/VERTEX_LOCATION not set")
             return 1
         client = genai.Client(vertexai=True, project=project, location=location)
     else:
@@ -41,9 +39,7 @@ def main() -> int:
 
     if not embed_models:
         print("(none)")
-        print(
-            "\nNote: some model listings omit embedContent from supported_generation_methods."
-        )
+        print("\nNote: some model listings omit embedContent from supported_generation_methods.")
         print("Probing common embedding models with a real embed call...")
 
         probe_candidates = [
@@ -54,9 +50,7 @@ def main() -> int:
             "models/text-embedding-004",
         ]
         seen: set[str] = set()
-        probe_candidates = [
-            m for m in probe_candidates if m and not (m in seen or seen.add(m))
-        ]
+        probe_candidates = [m for m in probe_candidates if m and not (m in seen or seen.add(m))]
 
         for model_name in probe_candidates:
             try:
@@ -76,9 +70,7 @@ def main() -> int:
                 msg = str(e).splitlines()[0] if str(e) else repr(e)
                 print(f"❌ {model_name}: {msg}")
 
-        print(
-            "\nIf none work, your key/project may not have embeddings enabled on this endpoint."
-        )
+        print("\nIf none work, your key/project may not have embeddings enabled on this endpoint.")
         print(
             "If you're using Vertex AI instead of AI Studio, set EMBEDDING_PROVIDER=vertex_ai and configure VERTEX_PROJECT/VERTEX_LOCATION."
         )

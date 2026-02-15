@@ -10,20 +10,16 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-from lib.db.postgres_client import PostgresClient
-from lib.order_papers.ingestor import OrderPaperIngestor
+from lib.db.postgres_client import PostgresClient  # noqa: E402
+from lib.order_papers.ingestor import OrderPaperIngestor  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Ingest an order paper into PostgreSQL"
-    )
-    parser.add_argument(
-        "--file", required=True, help="Path to an order paper text file"
-    )
+    parser = argparse.ArgumentParser(description="Ingest an order paper into PostgreSQL")
+    parser.add_argument("--file", required=True, help="Path to an order paper text file")
     args = parser.parse_args()
 
-    with open(args.file, "r", encoding="utf-8") as f:
+    with open(args.file, encoding="utf-8") as f:
         raw_text = f.read()
 
     with PostgresClient() as postgres:

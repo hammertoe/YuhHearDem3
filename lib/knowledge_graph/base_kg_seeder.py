@@ -256,9 +256,7 @@ class BaseKGSeeder:
         if not node_id_list:
             return
 
-        check_query = (
-            "SELECT id, label FROM kg_nodes WHERE id = ANY(%s) AND embedding IS NULL"
-        )
+        check_query = "SELECT id, label FROM kg_nodes WHERE id = ANY(%s) AND embedding IS NULL"
         rows = self.postgres.execute_query(check_query, (node_id_list,))
 
         labels_to_embed = {row[0]: row[1] for row in rows}
@@ -277,9 +275,7 @@ class BaseKGSeeder:
                 print(f"Error generating embeddings batch: {e}")
                 return
 
-            update_rows = [
-                (vector_literal(vec), nid) for nid, vec in zip(node_ids, embeddings)
-            ]
+            update_rows = [(vector_literal(vec), nid) for nid, vec in zip(node_ids, embeddings)]
 
             update_query = """
                 UPDATE kg_nodes

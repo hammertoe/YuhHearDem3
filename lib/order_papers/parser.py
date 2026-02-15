@@ -101,9 +101,7 @@ def parse_order_paper_text(text: str) -> OrderPaperParsed:
     for idx, h in enumerate(headings):
         title = h.group(1).strip()
         start = h.end()
-        end = (
-            headings[idx + 1].start() if idx + 1 < len(headings) else len(bills_section)
-        )
+        end = headings[idx + 1].start() if idx + 1 < len(headings) else len(bills_section)
         block = bills_section[start:end]
 
         def field(name: str) -> str | None:

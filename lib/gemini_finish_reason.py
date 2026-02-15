@@ -45,6 +45,4 @@ def raise_if_retryable_finish_reason(response: Any) -> None:
         return
 
     finish_reason_name = normalize_finish_reason_name(finish_reason)
-    raise RetryableFinishReasonError(
-        f"Retryable finish_reason encountered: {finish_reason_name}"
-    )
+    raise RetryableFinishReasonError(f"Retryable finish_reason encountered: {finish_reason_name}")

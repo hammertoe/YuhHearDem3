@@ -101,9 +101,7 @@ def export_order_paper(order_paper_id: str, output_path: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Export order paper from database to text file"
-    )
+    parser = argparse.ArgumentParser(description="Export order paper from database to text file")
     parser.add_argument("order_paper_id", help="Order paper ID")
     parser.add_argument("output_path", help="Output text file path")
     args = parser.parse_args()

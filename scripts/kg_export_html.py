@@ -12,7 +12,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-from lib.db.postgres_client import PostgresClient
+from lib.db.postgres_client import PostgresClient  # noqa: E402
 
 
 def _color_for_type(node_type: str) -> str:
@@ -239,9 +239,7 @@ def _build_html(*, title: str, nodes: list[dict], edges: list[dict], meta: dict)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Export canonical KG from Postgres to HTML"
-    )
+    parser = argparse.ArgumentParser(description="Export canonical KG from Postgres to HTML")
     parser.add_argument("--output-html", default="kg_db.html", help="Output HTML file")
     parser.add_argument(
         "--youtube-video-id",
@@ -334,9 +332,7 @@ def main() -> int:
             else:
                 node_rows = pg.execute_query(nodes_query)
         else:
-            nodes_query = (
-                "SELECT id, label, type, aliases FROM kg_nodes WHERE id = ANY(%s)"
-            )
+            nodes_query = "SELECT id, label, type, aliases FROM kg_nodes WHERE id = ANY(%s)"
             node_rows = pg.execute_query(nodes_query, (list(node_ids),))
 
         if args.limit_nodes:

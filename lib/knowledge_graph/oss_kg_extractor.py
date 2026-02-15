@@ -261,9 +261,7 @@ class OssKGExtractor:
             data_pass1 = self._parse_json_response(raw_response_pass1)
 
             # Normalize pass1 output
-            normalize_utterance_ids_in_data(
-                data_pass1, youtube_video_id=youtube_video_id
-            )
+            normalize_utterance_ids_in_data(data_pass1, youtube_video_id=youtube_video_id)
             normalize_evidence_in_data(data_pass1, window_text=window.text)
 
             pass1_parse_success = True
@@ -331,9 +329,7 @@ class OssKGExtractor:
                     data_pass2 = self._parse_json_response(raw_response_pass2)
 
                     # Normalize pass2 output
-                    normalize_utterance_ids_in_data(
-                        data_pass2, youtube_video_id=youtube_video_id
-                    )
+                    normalize_utterance_ids_in_data(data_pass2, youtube_video_id=youtube_video_id)
                     normalize_evidence_in_data(data_pass2, window_text=window.text)
 
                     # Merge additions
@@ -356,9 +352,7 @@ class OssKGExtractor:
                     final_data = self._parse_json_response(raw_response_pass2)
 
                     # Normalize pass2 output
-                    normalize_utterance_ids_in_data(
-                        final_data, youtube_video_id=youtube_video_id
-                    )
+                    normalize_utterance_ids_in_data(final_data, youtube_video_id=youtube_video_id)
                     normalize_evidence_in_data(final_data, window_text=window.text)
 
                 pass2_error = None
@@ -406,8 +400,7 @@ class OssKGExtractor:
                     "target_ref": target_ref,
                     "evidence": evidence,
                     "utterance_ids": utterance_ids,
-                    "earliest_timestamp": earliest_timestamp_str
-                    or window.earliest_timestamp,
+                    "earliest_timestamp": earliest_timestamp_str or window.earliest_timestamp,
                     "earliest_seconds": earliest_seconds or window.earliest_seconds,
                     "confidence": float(edge_data.get("confidence", 0.5)),
                 }

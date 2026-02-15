@@ -63,6 +63,12 @@ def test_parse_timestamp_to_seconds():
 
     seconds = parse_timestamp_to_seconds("01:30:15")
     assert seconds == 5415
+
+    seconds = parse_timestamp_to_seconds("46:17:400")
+    assert seconds == 2777
+
+    seconds = parse_timestamp_to_seconds("49:08:00")
+    assert seconds == 2948
     print("✅ Timestamp parsing works")
 
 

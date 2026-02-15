@@ -13,9 +13,7 @@ from typing import Any
 from lib.knowledge_graph.model_compare import normalize_speaker_ref
 
 
-def normalize_utterance_ids_in_data(
-    data: dict[str, Any], *, youtube_video_id: str
-) -> None:
+def normalize_utterance_ids_in_data(data: dict[str, Any], *, youtube_video_id: str) -> None:
     """Normalize utterance_ids to full "{youtube_video_id}:<seconds>" strings.
 
     Some models sometimes output bare seconds like "1851". The transcript windows
@@ -176,15 +174,11 @@ def validate_kg_llm_data(
     edges = data.get("edges")
     if not isinstance(nodes, list):
         issues.append(
-            ValidationIssue(
-                code="nodes_new_not_list", message="nodes_new must be a list"
-            )
+            ValidationIssue(code="nodes_new_not_list", message="nodes_new must be a list")
         )
         nodes = []
     if not isinstance(edges, list):
-        issues.append(
-            ValidationIssue(code="edges_not_list", message="edges must be a list")
-        )
+        issues.append(ValidationIssue(code="edges_not_list", message="edges must be a list"))
         edges = []
 
     for i, n in enumerate(nodes):
@@ -293,11 +287,7 @@ def validate_kg_llm_data(
                 )
             )
         else:
-            bad = [
-                str(uid)
-                for uid in utterance_ids
-                if str(uid) not in window_utterance_ids
-            ]
+            bad = [str(uid) for uid in utterance_ids if str(uid) not in window_utterance_ids]
             if bad:
                 issues.append(
                     ValidationIssue(
@@ -343,9 +333,7 @@ def should_run_second_pass(
     if mode == TwoPassMode.ALWAYS:
         return True, "always"
     if mode == TwoPassMode.ON_FAIL:
-        return (
-            not pass1_parse_success
-        ), "parse_fail" if not pass1_parse_success else None
+        return (not pass1_parse_success), "parse_fail" if not pass1_parse_success else None
     if mode == TwoPassMode.ON_LOW_EDGES:
         return (pass1_parse_success and edge_count < min_edges), (
             "low_edges" if pass1_parse_success and edge_count < min_edges else None
@@ -602,9 +590,7 @@ def merge_oss_additions(
     del_edges: list[Any] = del_edges_any if isinstance(del_edges_any, list) else []
 
     existing_ids = {
-        str(n.get("temp_id"))
-        for n in base_nodes
-        if isinstance(n, dict) and n.get("temp_id")
+        str(n.get("temp_id")) for n in base_nodes if isinstance(n, dict) and n.get("temp_id")
     }
 
     # Build remap for added nodes.

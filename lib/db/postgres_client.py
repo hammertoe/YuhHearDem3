@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from psycopg_pool import ConnectionPool
 

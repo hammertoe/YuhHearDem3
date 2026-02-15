@@ -11,18 +11,16 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(__file__))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from lib.db.postgres_client import PostgresClient
-from lib.embeddings.google_client import GoogleEmbeddingClient
-from lib.knowledge_graph.base_kg_seeder import BaseKGSeeder
+from lib.db.postgres_client import PostgresClient  # noqa: E402
+from lib.embeddings.google_client import GoogleEmbeddingClient  # noqa: E402
+from lib.knowledge_graph.base_kg_seeder import BaseKGSeeder  # noqa: E402
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Seed base KG from speakers, order papers, and bills"
     )
-    parser.add_argument(
-        "--skip-speakers", action="store_true", help="Skip seeding speakers"
-    )
+    parser.add_argument("--skip-speakers", action="store_true", help="Skip seeding speakers")
     parser.add_argument(
         "--skip-order-papers",
         action="store_true",

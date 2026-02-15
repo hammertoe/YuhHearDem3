@@ -9,8 +9,8 @@ from lib.order_papers.parser import OrderPaperParsed, parse_order_paper_text
 
 def generate_order_paper_id(sitting_date: str, order_paper_number: str) -> str:
     """Generate a stable order paper ID."""
-    unique = f"order_paper:{sitting_date}:{order_paper_number}".encode("utf-8")
-    return "op_" + hashlib.md5(unique).hexdigest()[:12]
+    unique = f"order_paper:{sitting_date}:{order_paper_number}".encode()
+    return "op_" + hashlib.md5(unique, usedforsecurity=False).hexdigest()[:12]
 
 
 def generate_order_paper_item_id(order_paper_id: str, sequence: int) -> str:
@@ -26,9 +26,7 @@ class OrderPaperIngestor:
         return self.ingest_parsed(parsed, raw_text)
 
     def ingest_parsed(self, parsed: OrderPaperParsed, raw_text: str) -> str:
-        order_paper_id = generate_order_paper_id(
-            parsed.sitting_date, parsed.order_paper_number
-        )
+        order_paper_id = generate_order_paper_id(parsed.sitting_date, parsed.order_paper_number)
 
         self.postgres.execute_update(
             """

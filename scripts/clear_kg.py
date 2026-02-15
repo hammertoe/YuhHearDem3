@@ -9,7 +9,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from lib.db.postgres_client import PostgresClient
+from lib.db.postgres_client import PostgresClient  # noqa: E402
 
 
 def clear_kg_tables():

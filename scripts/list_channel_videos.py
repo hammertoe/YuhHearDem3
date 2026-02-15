@@ -125,9 +125,7 @@ def list_channel_videos(
     # Get list of video IDs
     video_ids = [entry.get("id") for entry in entries if entry and entry.get("id")]
 
-    log(
-        f"Fetching details for {len(video_ids)} videos from {year} using {max_workers} workers..."
-    )
+    log(f"Fetching details for {len(video_ids)} videos from {year} using {max_workers} workers...")
 
     # Process videos in parallel
     completed = 0
@@ -140,9 +138,7 @@ def list_channel_videos(
         for future in as_completed(futures):
             completed += 1
             if not plain and completed % 10 == 0:
-                print(
-                    f"  Processed {completed}/{len(video_ids)}...", end="\r", flush=True
-                )
+                print(f"  Processed {completed}/{len(video_ids)}...", end="\r", flush=True)
 
             result = future.result()
             if result:

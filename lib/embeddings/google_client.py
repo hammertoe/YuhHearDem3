@@ -32,10 +32,7 @@ class GoogleEmbeddingClient:
                 raise ValueError("GOOGLE_API_KEY not set in environment")
             self.client = genai.Client(api_key=config.embedding.api_key)
         else:
-            if (
-                not config.embedding.vertex_project
-                or not config.embedding.vertex_location
-            ):
+            if not config.embedding.vertex_project or not config.embedding.vertex_location:
                 raise ValueError(
                     "VERTEX_PROJECT and VERTEX_LOCATION must be set when EMBEDDING_PROVIDER=vertex_ai"
                 )
@@ -68,9 +65,7 @@ class GoogleEmbeddingClient:
 
         # De-dupe while preserving order.
         seen: set[str] = set()
-        self._model_candidates = [
-            m for m in candidates if not (m in seen or seen.add(m))
-        ]
+        self._model_candidates = [m for m in candidates if not (m in seen or seen.add(m))]
         self.model = self._model_candidates[0]
         self.dimensions = config.embedding.dimensions
         self.batch_size = config.embedding.batch_size
@@ -83,9 +78,7 @@ class GoogleEmbeddingClient:
             output_dimensionality=int(self.dimensions) if self.dimensions else None,
         )
 
-        return self.client.models.embed_content(
-            model=self.model, contents=text, config=cfg
-        )
+        return self.client.models.embed_content(model=self.model, contents=text, config=cfg)
 
     @retry(
         stop=stop_after_attempt(5),
@@ -93,9 +86,7 @@ class GoogleEmbeddingClient:
         retry=retry_if_exception_type(Exception),
         reraise=True,
     )
-    def generate_embedding(
-        self, text: str, task_type: str = "RETRIEVAL_DOCUMENT"
-    ) -> list[float]:
+    def generate_embedding(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
         """Generate embedding for a single text."""
 
         last_err: Exception | None = None
@@ -143,9 +134,7 @@ class GoogleEmbeddingClient:
                 f"({len(batch)} texts)..."
             )
 
-            batch_embeddings = [
-                self.generate_embedding(text, task_type) for text in batch
-            ]
+            batch_embeddings = [self.generate_embedding(text, task_type) for text in batch]
             all_embeddings.extend(batch_embeddings)
 
         return all_embeddings

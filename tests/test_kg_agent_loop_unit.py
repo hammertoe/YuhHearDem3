@@ -519,3 +519,35 @@ def test_infer_citation_ids_from_src_links_resolves_utt_seconds_to_unique_known_
     inferred = _infer_citation_ids_from_src_links(answer, retrieval)
 
     assert inferred == ["AEOFDga2dh8:10848"]
+
+
+def test_filter_to_known_citation_ids_keeps_known_bill_citations() -> None:
+    from lib.kg_agent_loop import _filter_to_known_citation_ids
+
+    retrieval = {
+        "citations": [{"utterance_id": "utt_1"}],
+        "bill_citations": [{"citation_id": "bill:water_bill:12"}],
+    }
+
+    filtered = _filter_to_known_citation_ids(
+        ["bill:water_bill:12", "bill:other:1"],
+        retrieval,
+    )
+
+    assert filtered == ["bill:water_bill:12"]
+
+
+def test_infer_citation_ids_from_src_links_keeps_known_bill_citations() -> None:
+    from lib.kg_agent_loop import _infer_citation_ids_from_src_links
+
+    retrieval = {
+        "citations": [],
+        "bill_citations": [{"citation_id": "bill:water_bill:12"}],
+    }
+
+    inferred = _infer_citation_ids_from_src_links(
+        "Evidence [cite](#src:bill:water_bill:12)",
+        retrieval,
+    )
+
+    assert inferred == ["bill:water_bill:12"]

@@ -19,9 +19,7 @@ def test_normalize_speaker_ref_should_reject_unknown_speaker() -> None:
 
 
 def test_canonicalize_should_map_temp_ids_and_keep_speaker_ids() -> None:
-    nodes_new = [
-        {"temp_id": "n1", "type": "skos:Concept", "label": "Fixed penalty regime"}
-    ]
+    nodes_new = [{"temp_id": "n1", "type": "skos:Concept", "label": "Fixed penalty regime"}]
     edges = [
         {
             "source_ref": "s_alice_1",

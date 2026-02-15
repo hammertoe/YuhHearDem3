@@ -257,9 +257,7 @@ def match_order_paper_for_video(
 ) -> MatchDecision:
     """Return the best order-paper match for a video."""
 
-    video_title, video_date = _load_video_meta(
-        postgres, youtube_video_id=youtube_video_id
-    )
+    video_title, video_date = _load_video_meta(postgres, youtube_video_id=youtube_video_id)
     return match_order_paper_for_video_metadata(
         postgres,
         youtube_video_id=youtube_video_id,
@@ -290,9 +288,7 @@ def match_order_paper_for_video_metadata(
 
     ranked: list[MatchCandidate] = []
     for order_paper_id, sitting_date, session_text, _parsed_json in candidates:
-        upload_date_score, upload_date_reason = _score_upload_date(
-            base_date, sitting_date
-        )
+        upload_date_score, upload_date_reason = _score_upload_date(base_date, sitting_date)
         title_score, title_reason = _score_title(
             video_title,
             str(session_text or ""),

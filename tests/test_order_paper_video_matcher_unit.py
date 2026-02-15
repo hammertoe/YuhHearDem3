@@ -61,9 +61,7 @@ def test_match_order_paper_for_video_auto_matches_high_confidence() -> None:
         ],
     )
 
-    decision = match_order_paper_for_video(
-        postgres, youtube_video_id="vid_1", persist=True
-    )
+    decision = match_order_paper_for_video(postgres, youtube_video_id="vid_1", persist=True)
 
     assert decision.status == MatchStatus.AUTO_MATCHED
     assert decision.confidence == MatchConfidence.HIGH
@@ -85,9 +83,7 @@ def test_match_order_paper_for_video_marks_needs_review_when_low_confidence() ->
         ],
     )
 
-    decision = match_order_paper_for_video(
-        postgres, youtube_video_id="vid_2", persist=False
-    )
+    decision = match_order_paper_for_video(postgres, youtube_video_id="vid_2", persist=False)
 
     assert decision.status == MatchStatus.NEEDS_REVIEW
     assert decision.confidence == MatchConfidence.LOW

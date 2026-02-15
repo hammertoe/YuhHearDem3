@@ -134,12 +134,8 @@ def canonicalize_edges(
     out: list[dict[str, Any]] = []
 
     for e in edges:
-        source_ref = normalize_speaker_ref(
-            str(e.get("source_ref", "")), window_speaker_ids
-        )
-        target_ref = normalize_speaker_ref(
-            str(e.get("target_ref", "")), window_speaker_ids
-        )
+        source_ref = normalize_speaker_ref(str(e.get("source_ref", "")), window_speaker_ids)
+        target_ref = normalize_speaker_ref(str(e.get("target_ref", "")), window_speaker_ids)
         if source_ref is None or target_ref is None:
             continue
 
@@ -269,9 +265,7 @@ def compute_multi_model_report(
                 window_speaker_ids=r.window_speaker_ids,
             )
             for e in canon_edges:
-                sigs.add(
-                    edge_signature_strict(e) if strict else edge_signature_loose(e)
-                )
+                sigs.add(edge_signature_strict(e) if strict else edge_signature_loose(e))
         return sigs
 
     sigs_loose: dict[str, set[tuple]] = {}

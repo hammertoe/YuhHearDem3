@@ -345,9 +345,7 @@ def _extract_window(
         utterance_timestamps = {
             u.id: (u.timestamp_str, u.seconds_since_start) for u in window.utterances
         }
-        parsed_edges = extractor._parse_edges_from_llm_data(
-            data, utterance_timestamps, window
-        )
+        parsed_edges = extractor._parse_edges_from_llm_data(data, utterance_timestamps, window)
         for e in parsed_edges:
             edges.append(asdict(e))
 
@@ -478,9 +476,7 @@ def _extract_window_oss_two_pass(
                 )
                 raw2 = raw_fix
                 additions = _parse_json_loose(extractor, raw_fix)
-                normalize_utterance_ids_in_data(
-                    additions, youtube_video_id=youtube_video_id
-                )
+                normalize_utterance_ids_in_data(additions, youtube_video_id=youtube_video_id)
                 normalize_evidence_in_data(additions, window_text=window.text)
                 data_final = merge_oss_additions(data1, additions)
                 final_prompt = prompt2
@@ -504,9 +500,7 @@ def _extract_window_oss_two_pass(
                 )
                 raw2 = raw_fix
                 data2 = _parse_json_loose(extractor, raw_fix)
-                normalize_utterance_ids_in_data(
-                    data2, youtube_video_id=youtube_video_id
-                )
+                normalize_utterance_ids_in_data(data2, youtube_video_id=youtube_video_id)
                 normalize_evidence_in_data(data2, window_text=window.text)
                 data_final = data2
                 final_prompt = prompt2
@@ -546,9 +540,7 @@ def _extract_window_oss_two_pass(
                 )
                 raw2 = raw_fix
                 data2 = _parse_json_loose(extractor, raw_fix)
-                normalize_utterance_ids_in_data(
-                    data2, youtube_video_id=youtube_video_id
-                )
+                normalize_utterance_ids_in_data(data2, youtube_video_id=youtube_video_id)
                 normalize_evidence_in_data(data2, window_text=window.text)
                 data_final = data2
                 final_prompt = prompt2
@@ -581,8 +573,7 @@ def _extract_window_oss_two_pass(
                         nodes_new.append(n)
 
             utterance_timestamps = {
-                u.id: (u.timestamp_str, u.seconds_since_start)
-                for u in window.utterances
+                u.id: (u.timestamp_str, u.seconds_since_start) for u in window.utterances
             }
             parsed_edges = extractor._parse_edges_from_llm_data(
                 data_final, utterance_timestamps, window
@@ -618,12 +609,8 @@ def _extract_window_oss_two_pass(
         prompt_pass2=prompt2 if (save_prompt and prompt2) else None,
         raw_response_pass1=raw1 if save_raw else None,
         raw_response_pass2=raw2 if save_raw else None,
-        reasoning_pass1=reasoning1
-        if (save_raw and reasoning_format == "parsed")
-        else None,
-        reasoning_pass2=reasoning2
-        if (save_raw and reasoning_format == "parsed")
-        else None,
+        reasoning_pass1=reasoning1 if (save_raw and reasoning_format == "parsed") else None,
+        reasoning_pass2=reasoning2 if (save_raw and reasoning_format == "parsed") else None,
         pass1_error=pass1_error,
         pass2_error=pass2_error,
     )
@@ -675,8 +662,7 @@ def _write_markdown_report(
         return f'- {src} --{pred}--> {tgt} (t={secs}) | evidence="{ev}"'
 
     failures_by_key = {
-        key: [r for r in runs if not r.parse_success]
-        for key, runs in runs_by_key.items()
+        key: [r for r in runs if not r.parse_success] for key, runs in runs_by_key.items()
     }
 
     lines: list[str] = []
@@ -743,11 +729,7 @@ def _write_markdown_report(
         lines.append("|---|---|---:|---:|---:|---:|---:|")
         for i, a in enumerate(model_keys):
             for b in model_keys[i + 1 :]:
-                stats = (
-                    overlap_loose.get(a, {}).get(b)
-                    or overlap_loose.get(b, {}).get(a)
-                    or {}
-                )
+                stats = overlap_loose.get(a, {}).get(b) or overlap_loose.get(b, {}).get(a) or {}
                 lines.append(
                     f"| {a} | {b} | {stats.get('a', 0)} | {stats.get('b', 0)} | {stats.get('intersection', 0)} | {stats.get('union', 0)} | {stats.get('jaccard', 0.0):.3f} |"
                 )
@@ -1047,9 +1029,7 @@ def main() -> int:
     oss_runs = runs_by_key.get(oss_key, [])
     oss_with_pass2 = [r for r in oss_runs if r.pass2_trigger]
     if oss_runs:
-        pass2_times = [
-            r.pass2_elapsed_s for r in oss_with_pass2 if r.pass2_elapsed_s is not None
-        ]
+        pass2_times = [r.pass2_elapsed_s for r in oss_with_pass2 if r.pass2_elapsed_s is not None]
         deltas = []
         for r in oss_with_pass2:
             if r.pass1_edge_count is None:
@@ -1064,12 +1044,8 @@ def main() -> int:
             "max_added_edges": args.oss_max_added_edges,
             "windows": len(oss_runs),
             "pass2_triggered": len(oss_with_pass2),
-            "pass2_trigger_rate": (len(oss_with_pass2) / len(oss_runs))
-            if oss_runs
-            else 0.0,
-            "avg_pass2_s": (sum(pass2_times) / len(pass2_times))
-            if pass2_times
-            else 0.0,
+            "pass2_trigger_rate": (len(oss_with_pass2) / len(oss_runs)) if oss_runs else 0.0,
+            "avg_pass2_s": (sum(pass2_times) / len(pass2_times)) if pass2_times else 0.0,
             "avg_edge_delta": (sum(deltas) / len(deltas)) if deltas else 0.0,
             "edge_delta": {
                 "min": min(deltas) if deltas else 0,

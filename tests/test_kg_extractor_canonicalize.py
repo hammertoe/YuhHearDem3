@@ -9,9 +9,7 @@ from lib.knowledge_graph.window_builder import ConceptWindow, Utterance
 
 @dataclass
 class _FakeEmbeddingClient:
-    def generate_embeddings_batch(
-        self, texts: list[str], task_type: str
-    ) -> list[list[float]]:
+    def generate_embeddings_batch(self, texts: list[str], task_type: str) -> list[list[float]]:
         return [[0.0] * 3 for _ in texts]
 
 
@@ -40,9 +38,7 @@ class _FakePostgres:
             node_ids = []
             if params:
                 node_ids = params[0]
-            return [
-                (nid, f"label_for_{nid}") for nid in node_ids if nid in self.kg_nodes
-            ]
+            return [(nid, f"label_for_{nid}") for nid in node_ids if nid in self.kg_nodes]
 
         if "FROM kg_nodes" in query and "WHERE id = ANY" in query:
             node_ids = []

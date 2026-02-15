@@ -22,10 +22,7 @@ def test_infer_role_kind(label: str, expected: str) -> None:
 def test_normalize_role_label_collapses_whitespace_and_lowercases() -> None:
     from lib.roles import normalize_role_label
 
-    assert (
-        normalize_role_label("  Minister   for  Education \n")
-        == "minister for education"
-    )
+    assert normalize_role_label("  Minister   for  Education \n") == "minister for education"
 
 
 def test_split_role_labels_splits_on_commas() -> None:

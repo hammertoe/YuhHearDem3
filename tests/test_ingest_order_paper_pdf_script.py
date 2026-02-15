@@ -28,9 +28,7 @@ class _ParsedOrderPaper:
     chamber: str | None = None
 
 
-def test_ingest_order_paper_pdf_uses_execute_update_for_inserts(
-    tmp_path, monkeypatch
-) -> None:
+def test_ingest_order_paper_pdf_uses_execute_update_for_inserts(tmp_path, monkeypatch) -> None:
     from scripts import ingest_order_paper_pdf as mod
 
     pdf_path = tmp_path / "paper.pdf"
@@ -138,19 +136,13 @@ def test_ingest_order_paper_pdf_inserts_speaker_video_roles_when_video_id_provid
     monkeypatch.setattr(mod, "OrderPaperParser", _FakeOrderPaperParser)
     monkeypatch.setattr(mod, "PostgresClient", lambda: fake_postgres)
 
-    mod.ingest_order_paper(
-        str(pdf_path), chamber="house", youtube_video_id="test_video_123"
-    )
+    mod.ingest_order_paper(str(pdf_path), chamber="house", youtube_video_id="test_video_123")
 
-    role_queries = [
-        q for q, _ in fake_postgres.update_calls if "speaker_video_roles" in q
-    ]
+    role_queries = [q for q, _ in fake_postgres.update_calls if "speaker_video_roles" in q]
     assert len(role_queries) == 2
 
 
-def test_ingest_order_paper_pdf_auto_chamber_uses_llm_chamber(
-    tmp_path, monkeypatch
-) -> None:
+def test_ingest_order_paper_pdf_auto_chamber_uses_llm_chamber(tmp_path, monkeypatch) -> None:
     from scripts import ingest_order_paper_pdf as mod
 
     pdf_path = tmp_path / "paper.pdf"

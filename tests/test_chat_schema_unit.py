@@ -33,9 +33,7 @@ def test_ensure_chat_schema_executes_all_statements() -> None:
     assert len(pg.updates) == len(CHAT_SCHEMA_STATEMENTS)
     assert any("CREATE TABLE IF NOT EXISTS chat_threads" in q for q, _ in pg.updates)
     assert any("CREATE TABLE IF NOT EXISTS chat_messages" in q for q, _ in pg.updates)
-    assert any(
-        "CREATE TABLE IF NOT EXISTS chat_thread_state" in q for q, _ in pg.updates
-    )
+    assert any("CREATE TABLE IF NOT EXISTS chat_thread_state" in q for q, _ in pg.updates)
 
 
 def test_create_thread_bootstraps_schema_on_missing_tables() -> None:

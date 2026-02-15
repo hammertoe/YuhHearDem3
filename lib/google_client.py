@@ -85,6 +85,4 @@ class GeminiClient:
             return json.loads(response_text)
         except json.JSONDecodeError:
             preview = response_text[:200] if response_text else ""
-            raise ValueError(
-                f"Failed to parse JSON response ({context}). Preview: {preview}..."
-            )
+            raise ValueError(f"Failed to parse JSON response ({context}). Preview: {preview}...")

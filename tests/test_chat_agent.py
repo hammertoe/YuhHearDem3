@@ -12,9 +12,7 @@ from lib.id_generators import normalize_label
 
 
 @pytest.fixture
-def agent(
-    postgres_client: PostgresClient, embedding_client: GoogleEmbeddingClient
-) -> KGChatAgent:
+def agent(postgres_client: PostgresClient, embedding_client: GoogleEmbeddingClient) -> KGChatAgent:
     return KGChatAgent(
         postgres_client=postgres_client,
         embedding_client=embedding_client,
@@ -102,12 +100,8 @@ def test_retrieve_candidate_nodes_with_embeddings(
     funding_nodes = [c for c in candidates if "fund" in c["label"].lower()]
     assert len(funding_nodes) > 0
 
-    postgres_client.execute_update(
-        "DELETE FROM kg_nodes WHERE id = %s", ("kg_test_funding",)
-    )
-    postgres_client.execute_update(
-        "DELETE FROM paragraphs WHERE id = %s", ("test_para_1",)
-    )
+    postgres_client.execute_update("DELETE FROM kg_nodes WHERE id = %s", ("kg_test_funding",))
+    postgres_client.execute_update("DELETE FROM paragraphs WHERE id = %s", ("test_para_1",))
 
 
 @pytest.mark.integration
@@ -139,9 +133,7 @@ def test_retrieve_sentences_for_utterances(
     assert len(sentences) == 1
     assert sentences[0]["id"] == "test_utt_2"
     assert "funding" in sentences[0]["text"].lower()
-    postgres_client.execute_update(
-        "DELETE FROM sentences WHERE id = %s", ("test_utt_2",)
-    )
+    postgres_client.execute_update("DELETE FROM sentences WHERE id = %s", ("test_utt_2",))
 
 
 def test_normalize_label():

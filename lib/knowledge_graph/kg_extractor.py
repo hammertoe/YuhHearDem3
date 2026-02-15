@@ -227,8 +227,7 @@ Extract entities and relationships from the transcript window above. Return JSON
                     target_ref=target_ref,
                     evidence=evidence,
                     utterance_ids=utterance_ids,
-                    earliest_timestamp=earliest_timestamp_str
-                    or window.earliest_timestamp,
+                    earliest_timestamp=earliest_timestamp_str or window.earliest_timestamp,
                     earliest_seconds=earliest_seconds or window.earliest_seconds,
                     confidence=float(edge_data.get("confidence", 0.5)),
                 )
@@ -295,9 +294,7 @@ Extract entities and relationships from the transcript window above. Return JSON
     ) -> dict[str, Any]:
         """Canonicalize nodes and edges and store them in Postgres."""
 
-        def _normalize_speaker_ref(
-            ref: str, window_speaker_ids: list[str]
-        ) -> str | None:
+        def _normalize_speaker_ref(ref: str, window_speaker_ids: list[str]) -> str | None:
             ref = (ref or "").strip()
             if not ref:
                 return None
@@ -353,9 +350,7 @@ Extract entities and relationships from the transcript window above. Return JSON
             speaker_nodes_data = []
             for speaker_id in speaker_ids_seen:
                 meta = speaker_meta.get(speaker_id, {})
-                label = (
-                    meta.get("full_name") or meta.get("normalized_name") or speaker_id
-                )
+                label = meta.get("full_name") or meta.get("normalized_name") or speaker_id
                 aliases = []
                 for candidate in (
                     meta.get("full_name"),
@@ -435,13 +430,11 @@ Extract entities and relationships from the transcript window above. Return JSON
                 target_id = temp_to_canonical.get(target_ref, target_ref)
 
                 if not (
-                    edge.source_ref.startswith("speaker_")
-                    or edge.source_ref in temp_to_canonical
+                    edge.source_ref.startswith("speaker_") or edge.source_ref in temp_to_canonical
                 ):
                     stats["links_to_known"] += 1
                 if not (
-                    edge.target_ref.startswith("speaker_")
-                    or edge.target_ref in temp_to_canonical
+                    edge.target_ref.startswith("speaker_") or edge.target_ref in temp_to_canonical
                 ):
                     stats["links_to_known"] += 1
 
@@ -554,13 +547,9 @@ Extract entities and relationships from the transcript window above. Return JSON
 
         ids = [x[0] for x in to_embed]
         texts = [x[1] for x in to_embed]
-        embeddings = self.embedding.generate_embeddings_batch(
-            texts, task_type="RETRIEVAL_DOCUMENT"
-        )
+        embeddings = self.embedding.generate_embeddings_batch(texts, task_type="RETRIEVAL_DOCUMENT")
 
-        update_rows = [
-            (vector_literal(vec), node_id) for node_id, vec in zip(ids, embeddings)
-        ]
+        update_rows = [(vector_literal(vec), node_id) for node_id, vec in zip(ids, embeddings)]
         self.postgres.execute_batch(
             """
             UPDATE kg_nodes

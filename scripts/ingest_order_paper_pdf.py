@@ -33,9 +33,7 @@ from lib.roles import (
 )
 
 
-def _resolve_chamber(
-    chamber_arg: str, parsed_chamber: str | None, session_title: str
-) -> str:
+def _resolve_chamber(chamber_arg: str, parsed_chamber: str | None, session_title: str) -> str:
     if chamber_arg in {"house", "senate"}:
         return chamber_arg
 
@@ -95,8 +93,7 @@ def ingest_order_paper(
         "session_title": parsed_paper.session_title,
         "sitting_number": parsed_paper.sitting_number,
         "speakers": [
-            {"name": s.name, "title": s.title, "role": s.role}
-            for s in parsed_paper.speakers
+            {"name": s.name, "title": s.title, "role": s.role} for s in parsed_paper.speakers
         ],
         "agenda_items": [
             {
@@ -231,9 +228,7 @@ def ingest_order_paper(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Ingest order paper PDF using Gemini vision"
-    )
+    parser = argparse.ArgumentParser(description="Ingest order paper PDF using Gemini vision")
     parser.add_argument("pdf_path", help="Path to PDF file")
     parser.add_argument(
         "--chamber",
