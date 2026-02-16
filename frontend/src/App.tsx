@@ -890,7 +890,7 @@ function App() {
                           <div className="label-text mb-2">
                             Suggested Follow-up Questions
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap justify-start gap-2">
                             {m.followupQuestions.map((q, idx) => (
                               <button
                                 key={idx}
