@@ -75,7 +75,11 @@ class AppConfig:
         "on",
     }
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
-    enable_seed_rerank: bool = os.getenv("ENABLE_SEED_RERANK", "").lower() in {"1", "true", "on"}
+    enable_seed_rerank: bool = os.getenv("ENABLE_SEED_RERANK", "1").lower() in {
+        "1",
+        "true",
+        "on",
+    }
     seed_rerank_model: str = os.getenv("SEED_RERANK_MODEL", "gemini-2.0-flash")
     seed_rerank_top_n: int = int(os.getenv("SEED_RERANK_TOP_N", "40"))
 

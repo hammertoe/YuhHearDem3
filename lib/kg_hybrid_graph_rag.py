@@ -203,7 +203,7 @@ def _fuse_candidates_rrf(
         if has_recency:
             boost += 0.03
 
-        if generic_terms and is_topical and not topic_terms:
+        if generic_terms and is_topical:
             item_terms = set(re.findall(r"\b[a-zA-Z][a-zA-Z0-9-]{2,}\b", item_text))
             if not (topic_terms & item_terms):
                 boost -= 0.05
@@ -555,6 +555,7 @@ def _retrieve_seed_nodes(
     seed_k: int,
     enable_rerank: bool = True,
     rerank_model: str = "gemini-2.0-flash",
+    rerank_top_n: int = 40,
     query_embedding: list[float] | None = None,
 ) -> list[dict[str, Any]]:
     vector_candidates: list[dict[str, Any]] = []
@@ -669,7 +670,7 @@ def _retrieve_seed_nodes(
                 candidates=fused_candidates,
                 query=query,
                 model=rerank_model,
-                top_n=min(50, seed_k * 3),
+                top_n=max(5, min(int(rerank_top_n), max(50, seed_k * 3))),
             )
         except Exception:
             pass
@@ -686,18 +687,33 @@ def _retrieve_edges_hops_1(
     if not seed_ids:
         return []
     placeholders = ",".join(["%s"] * len(seed_ids))
-    rows = postgres.execute_query(
-        f"""
-        SELECT id, source_id, predicate, predicate_raw, target_id,
-               youtube_video_id, earliest_timestamp_str, earliest_seconds,
-               utterance_ids, evidence, speaker_ids, confidence
-        FROM kg_edges
-        WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})
-        ORDER BY edge_rank_score DESC NULLS LAST, confidence DESC NULLS LAST, earliest_seconds ASC
-        LIMIT %s
-        """,
-        tuple(seed_ids + seed_ids + [max_edges]),
-    )
+    params = tuple(seed_ids + seed_ids + [max_edges])
+    try:
+        rows = postgres.execute_query(
+            f"""
+            SELECT id, source_id, predicate, predicate_raw, target_id,
+                   youtube_video_id, earliest_timestamp_str, earliest_seconds,
+                   utterance_ids, evidence, speaker_ids, confidence, edge_rank_score
+            FROM kg_edges
+            WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})
+            ORDER BY edge_rank_score DESC NULLS LAST, confidence DESC NULLS LAST, earliest_seconds ASC
+            LIMIT %s
+            """,
+            params,
+        )
+    except Exception:
+        rows = postgres.execute_query(
+            f"""
+            SELECT id, source_id, predicate, predicate_raw, target_id,
+                   youtube_video_id, earliest_timestamp_str, earliest_seconds,
+                   utterance_ids, evidence, speaker_ids, confidence
+            FROM kg_edges
+            WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})
+            ORDER BY confidence DESC NULLS LAST, earliest_seconds ASC
+            LIMIT %s
+            """,
+            params,
+        )
     out: list[dict[str, Any]] = []
     for row in rows:
         out.append(
@@ -714,6 +730,9 @@ def _retrieve_edges_hops_1(
                 "evidence": row[9],
                 "speaker_ids": row[10] or [],
                 "confidence": float(row[11]) if row[11] is not None else None,
+                "edge_rank_score": float(row[12])
+                if len(row) > 12 and row[12] is not None
+                else None,
             }
         )
     return out
@@ -921,9 +940,11 @@ def kg_hybrid_graph_rag(
 
         enable_rerank = getattr(config, "enable_seed_rerank", False)
         rerank_model = getattr(config, "seed_rerank_model", "gemini-2.0-flash")
+        rerank_top_n = getattr(config, "seed_rerank_top_n", 40)
     except Exception:
         enable_rerank = False
         rerank_model = "gemini-2.0-flash"
+        rerank_top_n = 40
 
     seeds = _retrieve_seed_nodes(
         postgres=postgres,
@@ -932,6 +953,7 @@ def kg_hybrid_graph_rag(
         seed_k=seed_k,
         enable_rerank=enable_rerank,
         rerank_model=rerank_model,
+        rerank_top_n=int(rerank_top_n),
         query_embedding=query_embedding,
     )
     seed_ids = [s["id"] for s in seeds]
@@ -989,12 +1011,22 @@ def kg_hybrid_graph_rag(
                 utterance_ids.append(uid)
 
     edges_filtered: int = 0
+    edge_rank_filter_skipped_no_scores = False
     if edge_rank_threshold is not None:
-        edges_before_filter = len(edges)
-        edges = [e for e in edges if e.get("edge_rank_score", 0.0) >= edge_rank_threshold]
-        edges_filtered = edges_before_filter - len(edges)
-        if edges_filtered > 0:
-            edges = edges[:max_edges]
+        has_rank_scores = any(e.get("edge_rank_score") is not None for e in edges)
+        if has_rank_scores:
+            edges_before_filter = len(edges)
+            edges = [
+                e
+                for e in edges
+                if e.get("edge_rank_score") is not None
+                and float(e.get("edge_rank_score") or 0.0) >= edge_rank_threshold
+            ]
+            edges_filtered = edges_before_filter - len(edges)
+            if edges_filtered > 0:
+                edges = edges[:max_edges]
+        else:
+            edge_rank_filter_skipped_no_scores = True
 
     citations = _hydrate_citations(
         postgres=postgres,
@@ -1013,6 +1045,7 @@ def kg_hybrid_graph_rag(
             **debug_info,
             "edge_rank_threshold": float(edge_rank_threshold),
             "edges_filtered_by_threshold": edges_filtered,
+            "edge_rank_filter_skipped_no_scores": edge_rank_filter_skipped_no_scores,
         }
 
     return {

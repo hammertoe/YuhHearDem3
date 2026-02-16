@@ -40,7 +40,7 @@ class _FakePostgres:
         if "FROM kg_edges" in sql:
             # (id, source_id, predicate, predicate_raw, target_id,
             #  youtube_video_id, earliest_timestamp_str, earliest_seconds,
-            #  utterance_ids, evidence, speaker_ids, confidence)
+            #  utterance_ids, evidence, speaker_ids, confidence, edge_rank_score)
             return [
                 (
                     "kge_1",
@@ -55,6 +55,7 @@ class _FakePostgres:
                     "They discussed water management policy.",
                     ["s_test_1"],
                     0.77,
+                    0.12,
                 )
             ]
 
@@ -318,3 +319,57 @@ def test_kg_hybrid_graph_rag_with_bills_should_include_page_fragment_and_match_t
     assert bill["page_number"] == 12
     assert bill["source_url"].endswith("#page=12")
     assert "water" in bill["matched_terms"]
+
+
+def test_fuse_candidates_rrf_should_penalize_generic_governance_when_query_is_topical() -> None:
+    from lib.kg_hybrid_graph_rag import _extract_query_intent, _fuse_candidates_rrf
+
+    vector_candidates = [
+        {
+            "id": "kg_ministers",
+            "type": "foaf:Group",
+            "label": "ministers",
+            "aliases": ["minister"],
+        },
+        {
+            "id": "kg_water",
+            "type": "skos:Concept",
+            "label": "water management",
+            "aliases": ["water"],
+        },
+    ]
+    fulltext_candidates = []
+    alias_candidates = []
+
+    query = "What did ministers say about water management recently"
+    intent = _extract_query_intent(query)
+
+    fused = _fuse_candidates_rrf(
+        vector_candidates=vector_candidates,
+        fulltext_candidates=fulltext_candidates,
+        alias_candidates=alias_candidates,
+        query=query,
+        intent=intent,
+    )
+
+    assert fused[0]["id"] == "kg_water"
+    ministers = next(item for item in fused if item["id"] == "kg_ministers")
+    assert ministers["boost"] < 0.0
+
+
+def test_kg_hybrid_graph_rag_should_keep_edges_when_threshold_applies() -> None:
+    from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
+
+    out = kg_hybrid_graph_rag(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        query="water management",
+        hops=1,
+        seed_k=5,
+        max_edges=20,
+        max_citations=5,
+        edge_rank_threshold=0.05,
+    )
+
+    assert len(out["edges"]) == 1
+    assert out["edges"][0]["id"] == "kge_1"
