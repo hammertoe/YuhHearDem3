@@ -914,9 +914,13 @@ def kg_hybrid_graph_rag(
         max_citations: Maximum citations to return (default: 12)
         edge_rank_threshold: Optional threshold to filter edges by edge_rank_score.
             Only returns edges with score >= threshold.
-            Recommended: 0.05 after normalization, or 0.00001 before normalization.
+            Recommended: 0.001 or omit for no filtering.
             None means no threshold filtering (default: None)
     """
+    # Guard against overly aggressive thresholds that filter out most edges
+    if edge_rank_threshold is not None and edge_rank_threshold >= 0.05:
+        edge_rank_threshold = None
+
     query = (query or "").strip()
     if not query:
         return {

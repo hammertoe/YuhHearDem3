@@ -621,7 +621,7 @@ class KGAgentLoop:
                 "Hybrid Graph-RAG: vector/fulltext seed search over kg_nodes, then expand kg_edges N hops "
                 "and return a compact subgraph plus provenance citations with youtube timecoded URLs. "
                 "Also retrieves bill excerpt citations for legislation questions. "
-                "Use edge_rank_threshold to filter low-quality edges (0.05 recommended after normalization)."
+                "Use edge_rank_threshold to filter low-quality edges (recommended: 0.001 or omit for no filtering)."
             ),
             parameters_json_schema=tool_schema,
         )
