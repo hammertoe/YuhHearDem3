@@ -1,10 +1,316 @@
 from __future__ import annotations
 
 import re
+import json
 from typing import Any
 
 from lib.db.pgvector import vector_literal
 from lib.id_generators import normalize_label
+
+# Topic terms for boost detection (Barbados-specific)
+TOPIC_TERMS: set[str] = {
+    "water",
+    "bwa",
+    "drought",
+    "irrigation",
+    "flood",
+    "drainage",
+    "housing",
+    "home",
+    "homeless",
+    "property",
+    "rent",
+    "squatter",
+    "tourism",
+    "visitor",
+    "hotel",
+    "cruise",
+    "beach",
+    "coast",
+    "education",
+    "school",
+    "university",
+    "student",
+    "teacher",
+    "health",
+    "hospital",
+    "doctor",
+    "nurse",
+    "clinic",
+    "cancer",
+    "hiv",
+    "economy",
+    "gdp",
+    "inflation",
+    "tax",
+    "revenue",
+    "budget",
+    "crime",
+    "police",
+    "prison",
+    "murder",
+    "robbery",
+    "gang",
+    "climate",
+    "climate-change",
+    "carbon",
+    "emission",
+    "renewable",
+    "solar",
+    "agriculture",
+    "farm",
+    "crop",
+    "livestock",
+    "food",
+    "fishing",
+    "transport",
+    "road",
+    "bus",
+    "traffic",
+    "bridge",
+    "airport",
+    "employment",
+    "job",
+    "unemployment",
+    "worker",
+    "labour",
+    "social",
+    "welfare",
+    "pension",
+    "elderly",
+    "disabled",
+}
+
+# Generic governance terms that should be penalized when no topic overlap
+GENERIC_GOVERNANCE_TERMS: set[str] = {
+    "minister",
+    "ministers",
+    "ministry",
+    "government",
+    "cabinet",
+    "parliament",
+    "house",
+    "senate",
+    "bill",
+    "legislation",
+    "law",
+    "regulation",
+    "policy",
+    "amendment",
+    "motion",
+    "debate",
+    "speech",
+    "member",
+    "mp",
+    "senator",
+    "speaker",
+    "chairman",
+    "chairperson",
+    "resolution",
+    "committee",
+    "report",
+    "order",
+    "paper",
+}
+
+
+def _extract_query_intent(query: str) -> dict[str, Any]:
+    """Extract topic terms and recency intent from query."""
+    query_lower = (query or "").lower()
+    terms = set(re.findall(r"\b[a-zA-Z][a-zA-Z0-9-]{2,}\b", query_lower))
+
+    topic_matches = terms & TOPIC_TERMS
+    generic_matches = terms & GENERIC_GOVERNANCE_TERMS
+
+    has_recency = any(
+        t in query_lower for t in {"recent", "recently", "latest", "last", "new", "current"}
+    )
+
+    return {
+        "topic_terms": list(topic_matches),
+        "generic_terms": list(generic_matches),
+        "has_recency": has_recency,
+        "is_topical": len(topic_matches) > 0,
+    }
+
+
+def _fuse_candidates_rrf(
+    vector_candidates: list[dict[str, Any]],
+    fulltext_candidates: list[dict[str, Any]],
+    alias_candidates: list[dict[str, Any]],
+    query: str,
+    k: int = 60,
+    intent: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Fuse ranked candidate lists using Reciprocal Rank Fusion with boosts."""
+    intent = intent or {}
+    topic_terms = set(intent.get("topic_terms", []))
+    has_recency = intent.get("has_recency", False)
+    is_topical = intent.get("is_topical", False)
+    generic_terms = set(intent.get("generic_terms", []))
+
+    def get_rrf_scores(items: list[dict[str, Any]], channel: str) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for rank, item in enumerate(items, 1):
+            item_id = str(item.get("id", ""))
+            if not item_id:
+                continue
+            rrf = 1.0 / (k + rank)
+            scores[item_id] = scores.get(item_id, 0.0) + rrf
+        return scores
+
+    vec_scores = get_rrf_scores(vector_candidates, "vector")
+    ft_scores = get_rrf_scores(fulltext_candidates, "fulltext")
+    alias_scores = get_rrf_scores(alias_candidates, "alias")
+
+    all_ids: set[str] = set(vec_scores) | set(ft_scores) | set(alias_scores)
+
+    def build_item_map(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        return {str(item.get("id", "")): item for item in items if item.get("id")}
+
+    vec_map = build_item_map(vector_candidates)
+    ft_map = build_item_map(fulltext_candidates)
+    alias_map = build_item_map(alias_candidates)
+
+    fused: list[dict[str, Any]] = []
+    for item_id in all_ids:
+        rrf_score = (
+            vec_scores.get(item_id, 0.0)
+            + ft_scores.get(item_id, 0.0)
+            + alias_scores.get(item_id, 0.0)
+        )
+
+        base_item = vec_map.get(item_id) or ft_map.get(item_id) or alias_map.get(item_id)
+        if not base_item:
+            continue
+
+        label = (base_item.get("label") or "").lower()
+        aliases = base_item.get("aliases") or []
+        aliases_text = " ".join(aliases).lower() if aliases else ""
+        item_text = f"{label} {aliases_text}"
+
+        boost = 0.0
+
+        if topic_terms:
+            item_terms = set(re.findall(r"\b[a-zA-Z][a-zA-Z0-9-]{2,}\b", item_text))
+            topic_coverage = len(topic_terms & item_terms)
+            if topic_coverage > 0:
+                boost += 0.10 * min(topic_coverage, 3)
+
+            if any(t in item_text for t in topic_terms):
+                boost += 0.05
+
+        if has_recency:
+            boost += 0.03
+
+        if generic_terms and is_topical and not topic_terms:
+            item_terms = set(re.findall(r"\b[a-zA-Z][a-zA-Z0-9-]{2,}\b", item_text))
+            if not (topic_terms & item_terms):
+                boost -= 0.05
+
+        final_score = rrf_score + boost
+        fused.append(
+            {**base_item, "fused_score": final_score, "rrf_score": rrf_score, "boost": boost}
+        )
+
+    fused.sort(key=lambda x: float(x.get("fused_score", 0.0)), reverse=True)
+    return fused
+
+
+def _rerank_with_gemini(
+    candidates: list[dict[str, Any]],
+    query: str,
+    model: str = "gemini-2.0-flash",
+    top_n: int = 40,
+    timeout_ms: int = 3000,
+) -> list[dict[str, Any]]:
+    """Rerank top candidates using Gemini with strict JSON scoring."""
+    if not candidates or len(candidates) < 3:
+        return candidates[:top_n]
+
+    top_candidates = candidates[: min(len(candidates), top_n)]
+    intent = _extract_query_intent(query)
+
+    candidate_list = "\n".join(
+        f"- {i + 1}. [{c.get('id')}] {c.get('label')} (type: {c.get('type')})"
+        for i, c in enumerate(top_candidates)
+    )
+
+    prompt = f"""You are a relevance scorer for a parliamentary knowledge graph.
+Query: "{query}"
+
+Topic terms in query: {intent.get("topic_terms", [])}
+Has recency intent: {intent.get("has_recency", False)}
+
+Candidates to score (respond with ONLY valid JSON array, no other text):
+{candidate_list}
+
+For each candidate, score from 0-1 on:
+- relevance: How directly relevant to the query topic
+- topic_match: Does it match the topic terms in the query?
+- specificity: Is it specific (not generic governance)?
+- recency_fit: Does it fit recent discussions? (if recency intent)
+
+Respond with ONLY a JSON array of objects with fields: id, relevance, topic_match, specificity, recency_fit, reason (short phrase).
+Example: [{{"id": "kg_123", "relevance": 0.9, "topic_match": 0.8, "specificity": 0.7, "recency_fit": 0.5, "reason": "direct water topic"}}]
+"""
+
+    try:
+        from google import genai
+        from lib.utils.config import config
+
+        client = genai.Client(api_key=config.embedding.api_key)
+
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "temperature": 0.0,
+                "max_output_tokens": 4000,
+            },
+        )
+
+        text = ""
+        if hasattr(response, "text"):
+            text = response.text
+        elif hasattr(response, "candidates") and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, "content") and candidate.content:
+                parts = getattr(candidate.content, "parts", None)
+                if parts:
+                    for part in parts:
+                        if hasattr(part, "text") and part.text:
+                            text += part.text
+
+        if not text:
+            return candidates[:top_n]
+
+        scores = json.loads(text)
+        if not isinstance(scores, list):
+            return candidates[:top_n]
+
+        score_map = {str(s.get("id", "")): s for s in scores if s.get("id")}
+
+        reranked: list[dict[str, Any]] = []
+        for c in top_candidates:
+            c_id = str(c.get("id", ""))
+            s = score_map.get(c_id, {})
+            relevance = float(s.get("relevance", 0.5))
+            topic_match = float(s.get("topic_match", 0.5))
+            specificity = float(s.get("specificity", 0.5))
+            recency_fit = float(s.get("recency_fit", 0.5))
+
+            final_score = (
+                0.55 * relevance + 0.20 * topic_match + 0.15 * specificity + 0.10 * recency_fit
+            )
+            reranked.append({**c, "rerank_score": final_score, "rerank_details": s})
+
+        reranked.sort(key=lambda x: float(x.get("rerank_score", 0.0)), reverse=True)
+        return reranked
+
+    except Exception:
+        return candidates[:top_n]
 
 
 def build_youtube_url(youtube_video_id: str, seconds_since_start: int) -> str:
@@ -247,6 +553,8 @@ def _retrieve_seed_nodes(
     embedding_client: Any,
     query: str,
     seed_k: int,
+    enable_rerank: bool = True,
+    rerank_model: str = "gemini-2.0-flash",
 ) -> list[dict[str, Any]]:
     vector_candidates: list[dict[str, Any]] = []
     fulltext_candidates: list[dict[str, Any]] = []
@@ -263,7 +571,7 @@ def _retrieve_seed_nodes(
             ORDER BY embedding <=> %s ASC
             LIMIT %s
             """,
-            (vector_literal(query_embedding), vector_literal(query_embedding), seed_k),
+            (vector_literal(query_embedding), vector_literal(query_embedding), seed_k * 2),
         )
         for row in rows:
             distance = float(row[4] or 0.0)
@@ -278,7 +586,6 @@ def _retrieve_seed_nodes(
                 }
             )
     except Exception:
-        # Embeddings optional; full-text below still works.
         pass
 
     # Full-text search on label+aliases (kg_nodes.tsv trigger)
@@ -290,7 +597,7 @@ def _retrieve_seed_nodes(
         ORDER BY rank DESC
         LIMIT %s
         """,
-        (query, query, seed_k),
+        (query, query, seed_k * 2),
     )
     for row in rows:
         rank = float(row[4] or 0.0)
@@ -316,7 +623,7 @@ def _retrieve_seed_nodes(
             FROM kg_aliases ka
             JOIN kg_nodes kn ON ka.node_id = kn.id
             WHERE ka.alias_norm = %s
-            LIMIT 5
+            LIMIT 10
             """,
             (alias_norm,),
         )
@@ -334,37 +641,37 @@ def _retrieve_seed_nodes(
     except Exception:
         pass
 
-    def sort_by_score(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        items.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
-        return items
+    # Dedupe each channel
+    vector_deduped = _dedupe_by_id(vector_candidates)
+    fulltext_deduped = _dedupe_by_id(fulltext_candidates)
+    alias_deduped = _dedupe_by_id(alias_candidates)
 
-    vector_sorted = sort_by_score(_dedupe_by_id(vector_candidates))
-    fulltext_sorted = sort_by_score(_dedupe_by_id(fulltext_candidates))
-    alias_sorted = sort_by_score(_dedupe_by_id(alias_candidates))
+    # Extract query intent for boosts
+    intent = _extract_query_intent(query)
 
-    out: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    # Use RRF fusion
+    fused_candidates = _fuse_candidates_rrf(
+        vector_deduped,
+        fulltext_deduped,
+        alias_deduped,
+        query=query,
+        k=60,
+        intent=intent,
+    )
 
-    def add_items(items: list[dict[str, Any]]) -> None:
-        for item in items:
-            item_id = str(item.get("id", ""))
-            if not item_id or item_id in seen:
-                continue
-            seen.add(item_id)
-            out.append(item)
-            if len(out) >= seed_k:
-                return
+    # Optionally rerank with Gemini
+    if enable_rerank and fused_candidates:
+        try:
+            fused_candidates = _rerank_with_gemini(
+                candidates=fused_candidates,
+                query=query,
+                model=rerank_model,
+                top_n=min(50, seed_k * 3),
+            )
+        except Exception:
+            pass
 
-    add_items(alias_sorted)
-
-    vector_quota = min(len(vector_sorted), max(1, seed_k // 2))
-    add_items(vector_sorted[:vector_quota])
-    if len(out) < seed_k:
-        add_items(fulltext_sorted)
-    if len(out) < seed_k:
-        add_items(vector_sorted[vector_quota:])
-
-    return out[:seed_k]
+    return fused_candidates[:seed_k]
 
 
 def _retrieve_edges_hops_1(
@@ -604,11 +911,23 @@ def kg_hybrid_graph_rag(
     max_edges = max(1, int(max_edges))
     max_citations = max(1, int(max_citations))
 
+    # Get reranker config
+    try:
+        from lib.utils.config import config
+
+        enable_rerank = getattr(config, "enable_seed_rerank", False)
+        rerank_model = getattr(config, "seed_rerank_model", "gemini-2.0-flash")
+    except Exception:
+        enable_rerank = False
+        rerank_model = "gemini-2.0-flash"
+
     seeds = _retrieve_seed_nodes(
         postgres=postgres,
         embedding_client=embedding_client,
         query=query,
         seed_k=seed_k,
+        enable_rerank=enable_rerank,
+        rerank_model=rerank_model,
     )
     seed_ids = [s["id"] for s in seeds]
 
