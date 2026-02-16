@@ -4,31 +4,70 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
-from lib.db.postgres_client import PostgresClient
-from lib.db.chat_schema import ensure_chat_schema
-from lib.chat_agent_v2 import KGChatAgentV2
 from lib.advanced_search_features import AdvancedSearchFeatures
+from lib.chat_agent_v2 import KGChatAgentV2
+from lib.db.chat_schema import ensure_chat_schema
+from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.utils.config import config
 
-app = FastAPI(title="Parliamentary Search API")
+logger = logging.getLogger(__name__)
 
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI(title="Parliamentary Search API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+cors_origins = config.api.cors_origins.split(",") if config.api.cors_origins != "*" else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=config.api.cors_allow_credentials,
+    allow_methods=(
+        config.api.cors_allow_methods.split(",") if config.api.cors_allow_methods != "*" else ["*"]
+    ),
+    allow_headers=(
+        config.api.cors_allow_headers.split(",") if config.api.cors_allow_headers != "*" else ["*"]
+    ),
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests for audit trail."""
+    start_time = datetime.now()
+
+    logger.info(
+        f"Request: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}"
+    )
+
+    try:
+        response = await call_next(request)
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Response: {response.status_code} for {request.method} {request.url.path} - {duration:.3f}s"
+        )
+        return response
+    except Exception as e:
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.error(
+            f"Request failed: {request.method} {request.url.path} - {duration:.3f}s - {e}",
+            exc_info=True,
+        )
+        raise
 
 
 def _get_postgres() -> PostgresClient:
@@ -57,8 +96,9 @@ def _startup() -> None:
     postgres = PostgresClient()
     try:
         ensure_chat_schema(postgres)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"❌ Failed to ensure chat schema: {e}")
+        raise
     embedding_client = GoogleEmbeddingClient()
     advanced_search = AdvancedSearchFeatures(
         postgres=postgres,
@@ -73,9 +113,9 @@ def _startup() -> None:
 
 
 class SearchRequest(BaseModel):
-    query: str
-    limit: int = 20
-    alpha: float = 0.6
+    query: Annotated[str, Field(min_length=1, max_length=500)]
+    limit: Annotated[int, Field(ge=1, le=100)] = 20
+    alpha: Annotated[float, Field(ge=0.0, le=1.0)] = 0.6
 
 
 class SearchResult(BaseModel):
@@ -95,9 +135,9 @@ class SearchResult(BaseModel):
 
 
 class TemporalSearchRequest(BaseModel):
-    query: str
-    limit: int = 20
-    alpha: float | None = 0.6
+    query: Annotated[str, Field(min_length=1, max_length=500)]
+    limit: Annotated[int, Field(ge=1, le=100)] = 20
+    alpha: Annotated[float | None, Field(ge=0.0, le=1.0)] = 0.6
     start_date: str | None = None
     end_date: str | None = None
     speaker_id: str | None = None
@@ -221,7 +261,7 @@ class ChatUsedEdge(BaseModel):
 
 
 class ChatMessageRequest(BaseModel):
-    content: str
+    content: Annotated[str, Field(min_length=1, max_length=5000)]
 
 
 class ChatMessageResponse(BaseModel):
@@ -414,14 +454,18 @@ def retrieve_sentences_for_paragraphs(paragraph_ids: list[str]) -> list[dict[str
 
 
 @app.post("/search", response_model=list[SearchResult])
-async def search(request: SearchRequest):
+@limiter.limit("30/minute")
+async def search(request: Request, search_request: SearchRequest):
     """Hybrid search combining entity + paragraph vector search."""
     try:
         try:
-            query_embedding = _get_embedding_client().generate_query_embedding(request.query)
+            query_embedding = _get_embedding_client().generate_query_embedding(search_request.query)
         except Exception as e:
             print(f"⚠️ Embeddings unavailable; falling back to BM25 only: {e}")
-            return [SearchResult(**r) for r in bm25_search_sentences(request.query, request.limit)]
+            return [
+                SearchResult(**r)
+                for r in bm25_search_sentences(search_request.query, search_request.limit)
+            ]
 
         phase1_entities = vector_search_entities(query_embedding, 10)
         phase1_paragraphs = vector_search_paragraphs(query_embedding, 10)
@@ -466,25 +510,27 @@ async def search(request: SearchRequest):
                 score=float(r["score"]),
                 search_type="hybrid",
             )
-            for r in scored[: request.limit]
+            for r in scored[: search_request.limit]
         ]
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Search failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/search/temporal", response_model=list[SearchResult])
-async def temporal_search(request: TemporalSearchRequest):
+@limiter.limit("30/minute")
+async def temporal_search(request: Request, temporal_request: TemporalSearchRequest):
     """Temporal search with filters."""
     try:
         try:
             results = _get_advanced_search().temporal_search(
-                request.query,
-                request.start_date,
-                request.end_date,
-                request.speaker_id,
-                request.entity_type,
-                request.limit,
+                temporal_request.query,
+                temporal_request.start_date,
+                temporal_request.end_date,
+                temporal_request.speaker_id,
+                temporal_request.entity_type,
+                temporal_request.limit,
             )
             return [SearchResult(**r) for r in results]
         except Exception as e:
@@ -492,17 +538,17 @@ async def temporal_search(request: TemporalSearchRequest):
             print(f"⚠️ Temporal embeddings unavailable; using BM25 fallback: {e}")
 
             where = ["s.tsv @@ plainto_tsquery('english', %s)"]
-            params: list[Any] = [request.query]
+            params: list[Any] = [temporal_request.query]
 
-            if request.start_date:
+            if temporal_request.start_date:
                 where.append("s.video_date >= to_date(%s, 'YYYY-MM-DD')")
-                params.append(request.start_date)
-            if request.end_date:
+                params.append(temporal_request.start_date)
+            if temporal_request.end_date:
                 where.append("s.video_date <= to_date(%s, 'YYYY-MM-DD')")
-                params.append(request.end_date)
-            if request.speaker_id:
+                params.append(temporal_request.end_date)
+            if temporal_request.speaker_id:
                 where.append("s.speaker_id = %s")
-                params.append(request.speaker_id)
+                params.append(temporal_request.speaker_id)
 
             sql = f"""
                 SELECT
@@ -524,8 +570,8 @@ async def temporal_search(request: TemporalSearchRequest):
                 LIMIT %s
             """
             # rank query param must be first; reuse query as last before limit
-            rank_query = request.query
-            final_params = [rank_query, *params, request.limit]
+            rank_query = temporal_request.query
+            final_params = [rank_query, *params, temporal_request.limit]
             rows = _get_postgres().execute_query(sql, tuple(final_params))
 
             return [
@@ -546,7 +592,8 @@ async def temporal_search(request: TemporalSearchRequest):
                 for row in rows
             ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Temporal search failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/search/trends")
@@ -568,7 +615,8 @@ async def get_trends(
             moving_average=result["moving_average"],
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Trends retrieval failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/speakers")
@@ -607,7 +655,8 @@ async def get_speakers() -> list[Speaker]:
             for row in results
         ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Get speakers failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/speakers/{speaker_id}")
@@ -678,7 +727,8 @@ async def get_speaker_stats(speaker_id: str) -> SpeakerStatsResponse:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Get speaker stats failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get(
@@ -729,47 +779,17 @@ async def create_thread(title: str | None = None):
             created_at=str(datetime.now()),
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/chat/threads/{thread_id}", response_model=GetThreadResponse)
-async def get_thread(thread_id: str):
-    """Get thread metadata and messages."""
-    try:
-        agent = _get_chat_agent()
-        thread = agent.get_thread(thread_id)
-        if thread is None:
-            raise HTTPException(status_code=404, detail="Thread not found")
-
-        return GetThreadResponse(
-            id=thread["id"],
-            title=thread["title"],
-            created_at=thread["created_at"],
-            updated_at=thread["updated_at"],
-            state=thread["state"],
-            messages=[
-                ThreadMessage(
-                    id=m["id"],
-                    role=m["role"],
-                    content=m["content"],
-                    metadata=m.get("metadata"),
-                    created_at=m["created_at"],
-                )
-                for m in thread["messages"]
-            ],
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Create thread failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/chat/threads/{thread_id}/messages", response_model=ChatMessageResponse)
-async def send_message(thread_id: str, request: ChatMessageRequest):
+@limiter.limit("10/minute")
+async def send_message(request: Request, thread_id: str, chat_request: ChatMessageRequest):
     """Send a message to a thread and get assistant response."""
     try:
         agent = _get_chat_agent()
-        response = await agent.process_message(thread_id, request.content)
+        response = await agent.process_message(thread_id, chat_request.content)
 
         return ChatMessageResponse(
             thread_id=thread_id,
@@ -782,7 +802,8 @@ async def send_message(thread_id: str, request: ChatMessageRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Send message failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 async def stream_chat_response(thread_id: str, content: str):
@@ -851,7 +872,8 @@ async def stream_chat_response(thread_id: str, content: str):
 
 
 @app.get("/chat/threads/{thread_id}/messages/stream")
-async def stream_message(thread_id: str, content: str):
+@limiter.limit("10/minute")
+async def stream_message(request: Request, thread_id: str, content: str):
     """Stream a message response with progress updates via SSE."""
     return StreamingResponse(
         stream_chat_response(thread_id, content),
@@ -866,8 +888,34 @@ async def stream_message(thread_id: str, content: str):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint for deployment monitoring."""
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+    """Health check endpoint for deployment monitoring with dependency validation."""
+    health_status = {"status": "ok", "timestamp": datetime.now().isoformat(), "checks": {}}
+
+    try:
+        _get_postgres().execute_query("SELECT 1")
+        health_status["checks"]["database"] = "ok"
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["checks"]["database"] = f"error: {e}"
+
+    try:
+        if embedding_client:
+            _get_embedding_client().generate_query_embedding("test")
+            health_status["checks"]["embeddings"] = "ok"
+        else:
+            health_status["checks"]["embeddings"] = "skipped"
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["checks"]["embeddings"] = f"error: {e}"
+
+    try:
+        _get_chat_agent()
+        health_status["checks"]["chat_agent"] = "ok"
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["checks"]["chat_agent"] = f"error: {e}"
+
+    return health_status
 
 
 @app.get("/api")

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
-from collections.abc import Iterable
 
 from psycopg_pool import ConnectionPool
 
@@ -28,7 +28,14 @@ class PostgresClient:
             f"password={config.database.postgres_password} "
             f"connect_timeout=30"
         )
-        self.pool = ConnectionPool(conninfo=conninfo, min_size=1, max_size=5, open=False)
+        self.pool = ConnectionPool(
+            conninfo=conninfo,
+            min_size=2,
+            max_size=20,
+            open=False,
+            timeout=30.0,
+            max_lifetime=3600.0,
+        )
         self.pool.open()
 
     @contextmanager
@@ -55,14 +62,16 @@ class PostgresClient:
                 cursor.close()
 
     def execute_query(
-        self, query: str, params: Iterable[Any] | None = None
+        self, query: str, params: Sequence[Any] | Mapping[str, Any] | None = None
     ) -> list[tuple[Any, ...]]:
         """Execute a query and return results."""
         with self.get_cursor() as cursor:
             cursor.execute(query, params)
             return cursor.fetchall()
 
-    def execute_update(self, query: str, params: Iterable[Any] | None = None) -> int:
+    def execute_update(
+        self, query: str, params: Sequence[Any] | Mapping[str, Any] | None = None
+    ) -> int:
         """Execute an update/insert query and return affected rows."""
         with self.get_cursor() as cursor:
             cursor.execute(query, params)

@@ -16,10 +16,11 @@ from google.genai.types import (
     FinishReason,
     GenerateContentConfig,
     GenerateContentResponse,
+    MediaResolution,
     Part,
+    ThinkingConfig,
     VideoMetadata,
 )
-from google.genai.types import MediaResolution, ThinkingConfig
 from rapidfuzz import fuzz
 
 from lib.db.postgres_client import PostgresClient
@@ -27,7 +28,7 @@ from lib.gemini_finish_reason import (
     RetryableFinishReasonError,
     raise_if_retryable_finish_reason,
 )
-
+from lib.utils.config import config
 
 load_dotenv()
 client = genai.Client()
@@ -427,8 +428,10 @@ def convert_to_https_url_if_cloud_storage_uri(uri: str) -> str:
 
 def get_retrier() -> tenacity.Retrying:
     return tenacity.Retrying(
-        stop=tenacity.stop_after_attempt(7),
-        wait=tenacity.wait_incrementing(start=10, increment=1),
+        stop=tenacity.stop_after_attempt(config.retry.max_attempts),
+        wait=tenacity.wait_incrementing(
+            start=config.retry.start_delay, increment=config.retry.delay_increment
+        ),
         retry=should_retry_request,
         reraise=True,
     )

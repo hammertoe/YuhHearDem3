@@ -60,6 +60,29 @@ class ScrapingConfig:
 
 
 @dataclass
+class RetryConfig:
+    """Retry configuration for API calls."""
+
+    max_attempts: int = int(os.getenv("RETRY_MAX_ATTEMPTS", "7"))
+    start_delay: float = float(os.getenv("RETRY_START_DELAY", "10.0"))
+    delay_increment: float = float(os.getenv("RETRY_DELAY_INCREMENT", "1.0"))
+
+
+@dataclass
+class APIConfig:
+    """API configuration."""
+
+    cors_origins: str = os.getenv("CORS_ORIGINS", "*")
+    cors_allow_credentials: bool = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() in {
+        "1",
+        "true",
+        "on",
+    }
+    cors_allow_methods: str = os.getenv("CORS_ALLOW_METHODS", "*")
+    cors_allow_headers: str = os.getenv("CORS_ALLOW_HEADERS", "*")
+
+
+@dataclass
 class AppConfig:
     """Application configuration."""
 
@@ -67,6 +90,8 @@ class AppConfig:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     video: VideoConfig = field(default_factory=VideoConfig)
     scraping: ScrapingConfig = field(default_factory=ScrapingConfig)
+    retry: RetryConfig = field(default_factory=RetryConfig)
+    api: APIConfig = field(default_factory=APIConfig)
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     chat_trace: bool = os.getenv("CHAT_TRACE", "").lower() in {"1", "true", "on"}
     enable_thinking: bool = os.getenv("ENABLE_THINKING", "").lower() in {
