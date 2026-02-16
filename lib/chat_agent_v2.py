@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -15,7 +16,28 @@ from lib.kg_agent_loop import KGAgentLoop
 from lib.utils.config import config
 
 
-_SRC_MARKDOWN_LINK_RE = re.compile(r"\]\s*\(([^)\]]+)[)\]]", re.IGNORECASE)
+# Progress stages for chat pipeline
+class ChatStage:
+    RECEIVED = "received"
+    RETRIEVING_SOURCES = "retrieving_sources"
+    RANKING_SOURCES = "ranking_sources"
+    READING_EVIDENCE = "reading_evidence"
+    DRAFTING_ANSWER = "drafting_answer"
+    FINALIZING = "finalizing"
+
+
+# User-friendly stage messages
+STAGE_MESSAGES: dict[str, str] = {
+    ChatStage.RECEIVED: "Got it — checking your question.",
+    ChatStage.RETRIEVING_SOURCES: "Looking through recent debates and documents.",
+    ChatStage.RANKING_SOURCES: "Picking the most relevant receipts from Parliament.",
+    ChatStage.READING_EVIDENCE: "Reading the clips and bill excerpts.",
+    ChatStage.DRAFTING_ANSWER: "Drafting your answer.",
+    ChatStage.FINALIZING: "Adding sources and final checks.",
+}
+
+
+_SRC_MARKDOWN_LINK_RE = re.compile(r"]\s*\(([^)\]]+)[)\]]", re.IGNORECASE)
 _SRC_TOKEN_RE = re.compile(r"(?:#src:|source:)([^,\s)\]]+)", re.IGNORECASE)
 
 
@@ -251,6 +273,7 @@ class KGChatAgentV2:
             client=client,
             model=model,
             enable_thinking=enable_thinking,
+            progress_callback=None,
         )
 
     def _ensure_chat_schema(self) -> None:
@@ -433,7 +456,10 @@ class KGChatAgentV2:
             else:
                 if normalized_uid in fetched_ids:
                     continue
-                source = self._fetch_source_by_id(normalized_uid)
+                lookup_uid = normalized_uid
+                if lookup_uid.lower().startswith("utt_"):
+                    lookup_uid = lookup_uid[4:]
+                source = self._fetch_source_by_id(lookup_uid)
                 if source:
                     out.append(source)
                     fetched_ids.add(source.utterance_id)
@@ -499,7 +525,24 @@ class KGChatAgentV2:
         except Exception:
             return None
 
-    async def process_message(self, thread_id: str, user_content: str) -> dict[str, Any]:
+    async def process_message(
+        self,
+        thread_id: str,
+        user_content: str,
+        progress_callback: Callable[[str, str | None], None] | None = None,
+    ) -> dict[str, Any]:
+        """Process a chat message.
+
+        Args:
+            thread_id: The thread ID to process message in
+            user_content: The user's message content
+            progress_callback: Optional callback(stage, message) for progress updates
+        """
+
+        def _progress(stage: str, message: str | None = None) -> None:
+            if progress_callback:
+                progress_callback(stage, message or STAGE_MESSAGES.get(stage, ""))
+
         self._ensure_chat_schema()
         thread = self.get_thread(thread_id)
         if thread is None:
@@ -508,6 +551,8 @@ class KGChatAgentV2:
         user_content = (user_content or "").strip()
         if not user_content:
             raise ValueError("Empty message")
+
+        _progress(ChatStage.RECEIVED)
 
         user_message_id = str(uuid.uuid4())
         _trace_section_start("PROCESS MESSAGE START")
@@ -529,8 +574,25 @@ class KGChatAgentV2:
         _trace_print("History Size", f"{len(history)} messages")
         _trace_section_end()
 
-        result = await self.loop.run(user_message=user_content, history=history)
+        _progress(ChatStage.RETRIEVING_SOURCES)
 
+        # Map agent loop stages to chat stages
+        def _loop_progress(loop_stage: str, message: str | None) -> None:
+            stage_map = {
+                "thinking": ChatStage.RANKING_SOURCES,
+                "searching": ChatStage.RANKING_SOURCES,
+                "synthesizing": ChatStage.DRAFTING_ANSWER,
+            }
+            mapped_stage = stage_map.get(loop_stage, ChatStage.RANKING_SOURCES)
+            _progress(mapped_stage, message)
+
+        self.loop.progress_callback = _loop_progress
+        result = await self.loop.run(user_message=user_content, history=history)
+        self.loop.progress_callback = None
+
+        _progress(ChatStage.READING_EVIDENCE)
+
+        _progress(ChatStage.DRAFTING_ANSWER)
         answer = (
             str(result.get("answer") or "").strip()
             or "I couldn't find enough evidence to answer that."
@@ -616,6 +678,8 @@ class KGChatAgentV2:
         _trace_print("Focus Node IDs", f"{len(focus_node_ids)} items")
         _trace_print("Sources Count", f"{len(sources)} items")
         _trace_section_end()
+
+        _progress(ChatStage.FINALIZING)
 
         return {
             "thread_id": thread_id,

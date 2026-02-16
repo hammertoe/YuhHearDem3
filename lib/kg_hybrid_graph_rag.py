@@ -555,6 +555,7 @@ def _retrieve_seed_nodes(
     seed_k: int,
     enable_rerank: bool = True,
     rerank_model: str = "gemini-2.0-flash",
+    query_embedding: list[float] | None = None,
 ) -> list[dict[str, Any]]:
     vector_candidates: list[dict[str, Any]] = []
     fulltext_candidates: list[dict[str, Any]] = []
@@ -562,7 +563,9 @@ def _retrieve_seed_nodes(
 
     # Vector search (best when embeddings exist)
     try:
-        query_embedding = embedding_client.generate_query_embedding(query)
+        embedding = query_embedding
+        if embedding is None:
+            embedding = embedding_client.generate_query_embedding(query)
         rows = postgres.execute_query(
             """
             SELECT id, type, label, aliases, embedding <=> %s AS distance
@@ -571,7 +574,7 @@ def _retrieve_seed_nodes(
             ORDER BY embedding <=> %s ASC
             LIMIT %s
             """,
-            (vector_literal(query_embedding), vector_literal(query_embedding), seed_k * 2),
+            (vector_literal(embedding), vector_literal(embedding), seed_k * 2),
         )
         for row in rows:
             distance = float(row[4] or 0.0)
@@ -876,6 +879,7 @@ def kg_hybrid_graph_rag(
     max_edges: int = 90,
     max_citations: int = 12,
     edge_rank_threshold: float | None = None,
+    query_embedding: list[float] | None = None,
 ) -> dict[str, Any]:
     """Hybrid retrieve seeds (vector+FTS), then expand KG edges N hops.
 
@@ -928,6 +932,7 @@ def kg_hybrid_graph_rag(
         seed_k=seed_k,
         enable_rerank=enable_rerank,
         rerank_model=rerank_model,
+        query_embedding=query_embedding,
     )
     seed_ids = [s["id"] for s in seeds]
 
@@ -1030,6 +1035,7 @@ def _retrieve_bill_excerpts(
     max_bill_citations: int = 8,
     min_bill_score: float = 0.35,
     max_chunks_per_bill: int = 1,
+    query_embedding: list[float] | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve bill excerpts matching the query using hybrid vector + BM25 search.
 
@@ -1047,7 +1053,9 @@ def _retrieve_bill_excerpts(
         return []
 
     try:
-        query_embedding = embedding_client.generate_query_embedding(query)
+        embedding = query_embedding
+        if embedding is None:
+            embedding = embedding_client.generate_query_embedding(query)
     except Exception:
         return []
 
@@ -1069,7 +1077,7 @@ def _retrieve_bill_excerpts(
 
     try:
         candidate_limit = max(max_bill_citations * 8, 24)
-        params = [vector_literal(query_embedding), query, candidate_limit]
+        params = [vector_literal(embedding), query, candidate_limit]
         rows = postgres.execute_query(sql, params)
     except Exception:
         rows = []
@@ -1153,6 +1161,12 @@ def kg_hybrid_graph_rag_with_bills(
     Returns:
         Dict with seeds, nodes, edges, citations, and bill_citations
     """
+    query_embedding: list[float] | None = None
+    try:
+        query_embedding = embedding_client.generate_query_embedding(query)
+    except Exception:
+        query_embedding = None
+
     result = kg_hybrid_graph_rag(
         postgres=postgres,
         embedding_client=embedding_client,
@@ -1162,6 +1176,7 @@ def kg_hybrid_graph_rag_with_bills(
         max_edges=max_edges,
         max_citations=max_citations,
         edge_rank_threshold=edge_rank_threshold,
+        query_embedding=query_embedding,
     )
 
     seed_bill_ids: list[str] = []
@@ -1175,6 +1190,7 @@ def kg_hybrid_graph_rag_with_bills(
         query=query,
         seed_bill_ids=seed_bill_ids,
         max_bill_citations=max_bill_citations,
+        query_embedding=query_embedding,
     )
 
     result["bill_citations"] = bill_citations

@@ -56,13 +56,12 @@ def _candidate_seconds_from_parts(
     mmss_reason = None
     has_millis = len(secs_token) > 2 or secs_raw > 59
     if mins_raw <= 59:
-        mmss = hours_raw * 60 + mins_raw
         if has_millis:
+            mmss = hours_raw * 60 + mins_raw
             mmss_reason = "mmss_millis"
         elif hours_raw >= 24:
+            mmss = hours_raw * 60 + mins_raw
             mmss_reason = "mmss_hours"
-        else:
-            mmss_reason = "mmss_alt"
     elif hours_raw == 0 and secs_raw <= 59:
         mmss = mins_raw * 60 + secs_raw
         mmss_reason = "mmss_zero_hours"

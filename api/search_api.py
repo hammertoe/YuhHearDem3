@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -237,21 +240,6 @@ postgres: PostgresClient | None = None
 embedding_client: GoogleEmbeddingClient | None = None
 advanced_search: AdvancedSearchFeatures | None = None
 chat_agent: KGChatAgentV2 | None = None
-
-
-def _get_postgres() -> PostgresClient:
-    assert postgres is not None
-    return postgres
-
-
-def _get_embedding_client() -> GoogleEmbeddingClient:
-    assert embedding_client is not None
-    return embedding_client
-
-
-def _get_advanced_search() -> AdvancedSearchFeatures:
-    assert advanced_search is not None
-    return advanced_search
 
 
 def _vector_literal(vec: list[float]) -> str:
@@ -795,6 +783,85 @@ async def send_message(thread_id: str, request: ChatMessageRequest):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def stream_chat_response(thread_id: str, content: str):
+    """Stream chat response with progress updates."""
+    from lib.chat_agent_v2 import STAGE_MESSAGES
+
+    progress_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+    result_container: dict[str, Any] = {}
+    error_container: dict[str, str] = {}
+    done = False
+
+    def progress_callback(stage: str, message: str | None) -> None:
+        msg = message or STAGE_MESSAGES.get(stage, "")
+        progress_queue.put_nowait((stage, msg))
+
+    async def run_agent():
+        nonlocal done
+        try:
+            agent = _get_chat_agent()
+            response = await agent.process_message(
+                thread_id, content, progress_callback=progress_callback
+            )
+            result_container["response"] = response
+        except Exception as e:
+            error_container["error"] = str(e)
+        finally:
+            done = True
+
+    # Start agent task
+    agent_task = asyncio.create_task(run_agent())
+
+    # Drain progress while agent runs
+    while not done:
+        try:
+            stage, msg = await asyncio.wait_for(progress_queue.get(), timeout=0.1)
+            event = json.dumps({"stage": stage, "message": msg})
+            yield f"event: stage\ndata: {event}\n\n"
+        except TimeoutError:
+            pass
+
+    await agent_task
+
+    # Drain remaining progress
+    while not progress_queue.empty():
+        try:
+            stage, msg = progress_queue.get_nowait()
+            event = json.dumps({"stage": stage, "message": msg})
+            yield f"event: stage\ndata: {event}\n\n"
+        except Exception:
+            break
+
+    if "error" in error_container:
+        error = json.dumps({"error": error_container["error"]})
+        yield f"event: error\ndata: {error}\n\n"
+    else:
+        response = result_container["response"]
+        final = {
+            "thread_id": thread_id,
+            "assistant_message": response["assistant_message"],
+            "sources": response.get("sources", []),
+            "focus_node_ids": list(response.get("focus_node_ids", [])),
+            "followup_questions": list(response.get("followup_questions", [])),
+            "debug": response.get("debug"),
+        }
+        yield f"event: final\ndata: {json.dumps(final)}\n\n"
+
+
+@app.get("/chat/threads/{thread_id}/messages/stream")
+async def stream_message(thread_id: str, content: str):
+    """Stream a message response with progress updates via SSE."""
+    return StreamingResponse(
+        stream_chat_response(thread_id, content),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/health")

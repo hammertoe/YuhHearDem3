@@ -466,41 +466,6 @@ body {
   box-shadow: 3px 3px 0 var(--bajan-gold);
 }
 
-/* Typing Animation - Tropical Breeze */
-.typing {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  padding: 4px 2px;
-}
-
-.typing span {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--bajan-blue);
-  animation: tropicalBounce 1.2s ease-in-out infinite;
-}
-
-.typing span:nth-child(2) {
-  animation-delay: 200ms;
-}
-
-.typing span:nth-child(3) {
-  animation-delay: 400ms;
-}
-
-@keyframes tropicalBounce {
-  0%, 100% {
-    transform: translateY(0);
-    background: var(--bajan-blue);
-  }
-  50% {
-    transform: translateY(-6px);
-    background: var(--bajan-gold);
-  }
-}
-
 /* Parliament Background */
 .parliament-bg {
   /* Cropped image keeps the building higher on wide screens */

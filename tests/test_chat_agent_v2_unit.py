@@ -162,6 +162,26 @@ class _FakePostgresForFetch:
         ]
 
 
+class _FakePostgresForStrictFetch:
+    def execute_query(self, _sql: str, _params=None):
+        if _params != ("Q1VXHDpBeAg:1472",):
+            return []
+        return [
+            (
+                "Q1VXHDpBeAg:1472",
+                "Q1VXHDpBeAg",
+                1472,
+                "24:32",
+                "But I will be very specific...",
+                "r_r_straughn_1",
+                "Mr. Ryan Straughn",
+                "Minister in the Ministry of Finance",
+                "The Honourable The House - Tuesday 9th December, 2025 - Part 1",
+                "2025-12-09",
+            )
+        ]
+
+
 def test_fetch_source_by_id_should_prefer_enriched_speaker_name_and_title() -> None:
     agent = KGChatAgentV2(
         postgres_client=_FakePostgresForFetch(),
@@ -219,6 +239,23 @@ def test_sources_from_retrieval_should_only_include_cited_bill_excerpts() -> Non
 
     assert len(sources) == 1
     assert sources[0].citation_id == "bill:bill_1:3"
+
+
+def test_sources_from_retrieval_should_fetch_db_source_for_utt_prefixed_id() -> None:
+    agent = KGChatAgentV2(
+        postgres_client=_FakePostgresForStrictFetch(),
+        embedding_client=object(),
+        client=object(),
+    )
+
+    sources = agent._sources_from_retrieval(
+        retrieval={"citations": [], "bill_citations": []},
+        cite_utterance_ids=["utt_Q1VXHDpBeAg:1472"],
+        max_sources=24,
+    )
+
+    assert len(sources) == 1
+    assert sources[0].utterance_id == "Q1VXHDpBeAg:1472"
 
 
 def test_merge_cite_utterance_ids_should_keep_known_bill_citation_ids() -> None:

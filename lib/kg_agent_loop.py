@@ -552,12 +552,14 @@ class KGAgentLoop:
         model: str = "gemini-3-flash-preview",
         max_tool_iterations: int = 4,
         enable_thinking: bool = False,
+        progress_callback: Any | None = None,
     ) -> None:
         self.postgres = postgres
         self.embedding_client = embedding_client
         self.model = model
         self.max_tool_iterations = max_tool_iterations
         self.enable_thinking = enable_thinking
+        self.progress_callback = progress_callback
 
         if client is not None:
             self.client = client
@@ -659,7 +661,7 @@ class KGAgentLoop:
         config_params: dict[str, Any] = {
             "system_instruction": self._system_prompt(),
             "temperature": 0.2,
-            "max_output_tokens": 2048,
+            "max_output_tokens": 512 if is_tool_call else 2048,
         }
         if is_tool_call:
             config_params["tools"] = self._tool_declarations()
@@ -715,8 +717,12 @@ class KGAgentLoop:
                         print(f"        Response type: {type(p.get('response', {})).__name__}")
             print(f"\n{'=' * 60}\n")
         llm_start = _start_timer()
+        if self.progress_callback:
+            self.progress_callback("thinking", "Analyzing your question (planning retrieval)...")
         response = await self._call_llm(contents, is_tool_call=True)
         llm_duration = _end_timer(llm_start)
+        if self.progress_callback:
+            self.progress_callback("thinking", "Retrieval plan ready. Starting search...")
         _trace_print(trace_id, "Duration", _format_duration(llm_duration))
         if _should_trace():
             response_text = getattr(response, "text", None) or ""
@@ -778,6 +784,10 @@ class KGAgentLoop:
                         f"kg_hybrid_graph_rag(query={_truncate_text(str(fc.args.get('query', '')), 100)}, hops={fc.args.get('hops', 1)}, seed_k={fc.args.get('seed_k', 12)}, threshold={fc.args.get('edge_rank_threshold')})",
                     )
                     tool_start = _start_timer()
+                    if self.progress_callback:
+                        self.progress_callback(
+                            "searching", "Finding relevant debates (graph + citations)..."
+                        )
                     tool_result = kg_hybrid_graph_rag(
                         postgres=self.postgres,
                         embedding_client=self.embedding_client,
@@ -900,6 +910,8 @@ class KGAgentLoop:
                             print(f"        Response type: {type(p.get('response', {})).__name__}")
                 print(f"\n{'=' * 60}\n")
             llm_start = _start_timer()
+            if self.progress_callback:
+                self.progress_callback("synthesizing", "Writing your answer from the evidence...")
             response = await self._call_llm(contents, is_tool_call=False)
             llm_duration = _end_timer(llm_start)
             _trace_print(trace_id, "Duration", _format_duration(llm_duration))

@@ -79,3 +79,82 @@ export async function sendMessage(threadId: string, content: string): Promise<Ch
     body: JSON.stringify({ content }),
   });
 }
+
+export type ChatProgressCallback = (stage: string, message: string) => void;
+export type ChatFinalCallback = (response: ChatResponse) => void;
+export type ChatErrorCallback = (error: string) => void;
+
+export function sendMessageStream(
+  threadId: string,
+  content: string,
+  onProgress: ChatProgressCallback,
+  onFinal: ChatFinalCallback,
+  onError?: ChatErrorCallback
+): () => void {
+  let cancelled = false;
+
+  (async () => {
+    try {
+      const response = await fetch(
+        `/chat/threads/${encodeURIComponent(threadId)}/messages/stream?content=${encodeURIComponent(content)}`
+      );
+
+      if (!response.ok) {
+        onError?.(`Server error: ${response.status}`);
+        return;
+      }
+
+      if (!response.body) {
+        onError?.('No response body');
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (!cancelled) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (cancelled) break;
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.stage) {
+              onProgress(data.stage, data.message);
+            } else if (data.thread_id) {
+              onFinal({
+                thread_id: data.thread_id,
+                assistant_message: data.assistant_message,
+                sources: data.sources || [],
+                focus_node_ids: data.focus_node_ids || [],
+                followup_questions: data.followup_questions || [],
+                debug: data.debug || null,
+              });
+            } else if (data.error) {
+              onError?.(data.error);
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+      }
+    } catch (e) {
+      if (!cancelled) {
+        onError?.(e instanceof Error ? e.message : 'Connection error');
+      }
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}

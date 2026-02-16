@@ -45,6 +45,13 @@ def test_normalize_timestamp_str_treats_zero_hours_large_minutes_as_mmss():
     assert reason == "mmss_zero_hours"
 
 
+def test_normalize_timestamp_str_keeps_valid_zero_hour_hms_when_monotonic():
+    """Keeps normal 0:MM:SS values as HMS during monotonic parsing."""
+    seconds, reason = normalize_timestamp_str("0:50:06", 2, 8663)
+    assert format_seconds_to_timestamp(seconds) == "00:50:06"
+    assert reason == "hms"
+
+
 def test_build_sentence_id_mapping_preserves_suffixes():
     """Keeps duplicate suffixes stable between old and new ids."""
     transcripts = [

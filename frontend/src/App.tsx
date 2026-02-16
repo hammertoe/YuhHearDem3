@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { createThread, getThread, sendMessage, type ChatSource, type ThreadMessage } from './api';
+import {
+  createThread,
+  getThread,
+  sendMessageStream,
+  type ChatResponse,
+  type ChatSource,
+  type ThreadMessage,
+} from './api';
 import { groupSourcesByDocument } from './sourceGrouping';
 import { formatSourceTimecode } from './timeFormat';
 
@@ -437,8 +444,126 @@ function App() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [currentStage, setCurrentStage] = useState<string | null>(null);
+  const [stageMessages, setStageMessages] = useState<string[]>([]);
+  const stageQueueRef = useRef<string[]>([]);
+  const stageTimerRef = useRef<number | null>(null);
+  const stageDrainingRef = useRef(false);
+  const pendingFinalRef = useRef<ChatResponse | null>(null);
+  const pendingErrorRef = useRef<string | null>(null);
 
   const sortedMessages = useMemo(() => messages, [messages]);
+
+  const clearStageTimer = () => {
+    if (stageTimerRef.current !== null) {
+      window.clearTimeout(stageTimerRef.current);
+      stageTimerRef.current = null;
+    }
+  };
+
+  const resetProgressState = () => {
+    clearStageTimer();
+    stageQueueRef.current = [];
+    stageDrainingRef.current = false;
+    pendingFinalRef.current = null;
+    pendingErrorRef.current = null;
+    setCurrentStage(null);
+    setStageMessages([]);
+  };
+
+  const completeWithFinal = (res: ChatResponse) => {
+    const assistant: UIMessage = {
+      id: res.assistant_message.id,
+      role: 'assistant',
+      content: res.assistant_message.content,
+      createdAt: res.assistant_message.created_at,
+      sources: res.sources || [],
+      citationIds: extractCitationIds(res.assistant_message.metadata),
+      followupQuestions:
+        (res.followup_questions || []).length > 0
+          ? (res.followup_questions || []).slice(0, 4)
+          : extractFollowupQuestions(res.assistant_message.metadata),
+    };
+    setMessages((m) => [...m, assistant]);
+    setConnected(true);
+    setSending(false);
+    resetProgressState();
+  };
+
+  const completeWithError = (err: string) => {
+    console.error('[Send Message] Error:', err);
+    setMessages((m) => [
+      ...m,
+      {
+        id: `local_err_${Date.now()}`,
+        role: 'assistant',
+        content: `I couldn't reach the server. ${err}`,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    setSending(false);
+    resetProgressState();
+  };
+
+  const maybeCompletePending = () => {
+    if (stageDrainingRef.current || stageQueueRef.current.length > 0) {
+      return;
+    }
+    if (pendingErrorRef.current) {
+      const err = pendingErrorRef.current;
+      pendingErrorRef.current = null;
+      completeWithError(err);
+      return;
+    }
+    if (pendingFinalRef.current) {
+      const final = pendingFinalRef.current;
+      pendingFinalRef.current = null;
+      completeWithFinal(final);
+    }
+  };
+
+  const startStageDrain = () => {
+    if (stageDrainingRef.current) {
+      return;
+    }
+    stageDrainingRef.current = true;
+
+    const tick = () => {
+      const next = stageQueueRef.current.shift();
+      if (!next) {
+        stageDrainingRef.current = false;
+        stageTimerRef.current = null;
+        maybeCompletePending();
+        return;
+      }
+
+      setCurrentStage(next);
+      setStageMessages((prev) => {
+        if (prev[prev.length - 1] === next) {
+          return prev;
+        }
+        return [...prev, next];
+      });
+
+      stageTimerRef.current = window.setTimeout(tick, 1000);
+    };
+
+    tick();
+  };
+
+  const enqueueStageMessage = (message: string) => {
+    const msg = (message || '').trim();
+    if (!msg) {
+      return;
+    }
+    const queued = stageQueueRef.current;
+    const tail = queued.length > 0 ? queued[queued.length - 1] : currentStage;
+    if (tail === msg) {
+      return;
+    }
+    queued.push(msg);
+    startStageDrain();
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -491,6 +616,12 @@ function App() {
     load();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      clearStageTimer();
+    };
+  }, []);
+
   const onClear = async () => {
     console.log('[Clear Chat] Clearing chat and creating new thread...');
     localStorage.removeItem('yhd_thread_id');
@@ -498,6 +629,7 @@ function App() {
     setMessages([]);
     setInput('');
     setConnected(true);
+    resetProgressState();
 
     try {
       const created = await createThread(null);
@@ -510,7 +642,7 @@ function App() {
     }
   };
 
-  const onSend = async (prompt?: string) => {
+  const onSend = (prompt?: string) => {
     const content = (prompt ?? input).trim();
     if (!content || !threadId || sending) return;
 
@@ -525,38 +657,23 @@ function App() {
     setInput('');
     setSending(true);
     setConnected(true);
+    resetProgressState();
 
-    try {
-      const res = await sendMessage(threadId, content);
-      const assistant: UIMessage = {
-        id: res.assistant_message.id,
-        role: 'assistant',
-        content: res.assistant_message.content,
-        createdAt: res.assistant_message.created_at,
-        sources: res.sources || [],
-        citationIds: extractCitationIds(res.assistant_message.metadata),
-        followupQuestions:
-          (res.followup_questions || []).length > 0
-            ? (res.followup_questions || []).slice(0, 4)
-            : extractFollowupQuestions(res.assistant_message.metadata),
-      };
-      setMessages((m) => [...m, assistant]);
-      setConnected(true);
-    } catch (e) {
-      const err = e instanceof Error ? e.message : 'Failed to send message';
-      console.error('[Send Message] Error:', err);
-      setMessages((m) => [
-        ...m,
-        {
-          id: `local_err_${Date.now()}`,
-          role: 'assistant',
-          content: `I couldn't reach the server. ${err}`,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
-    } finally {
-      setSending(false);
-    }
+    sendMessageStream(
+      threadId,
+      content,
+      (_stage, message) => {
+        enqueueStageMessage(message);
+      },
+      (res) => {
+        pendingFinalRef.current = res;
+        maybeCompletePending();
+      },
+      (err) => {
+        pendingErrorRef.current = err;
+        maybeCompletePending();
+      }
+    );
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -795,11 +912,37 @@ function App() {
               {sending && (
                 <div className="msg-row msg-assistant">
                   <div className="msg-bubble bubble-assistant">
-                    <div className="typing">
-                      <span />
-                      <span />
-                      <span />
-                    </div>
+                    {currentStage ? (
+                      <div className="py-1">
+                        <div className="flex items-center gap-3">
+                          <div className="flex gap-1">
+                            <span className="h-2 w-2 animate-bounce rounded-full bg-[#00267F]" style={{ animationDelay: '0ms' }} />
+                            <span className="h-2 w-2 animate-bounce rounded-full bg-[#00267F]" style={{ animationDelay: '150ms' }} />
+                            <span className="h-2 w-2 animate-bounce rounded-full bg-[#00267F]" style={{ animationDelay: '300ms' }} />
+                          </div>
+                          <span className="text-sm font-accent text-ink/70">{currentStage}</span>
+                        </div>
+                        {stageMessages.length > 1 && (
+                          <div className="mt-2 space-y-1 text-xs font-accent text-ink/55">
+                            {stageMessages.slice(-5).map((msg, idx, arr) => {
+                              const isLast = idx === arr.length - 1;
+                              return (
+                                <div key={`${msg}-${idx}`}>{isLast ? '[...]' : '[ok]'} {msg}</div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 py-2">
+                        <div className="flex gap-1">
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-[#00267F]" style={{ animationDelay: '0ms' }} />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-[#00267F]" style={{ animationDelay: '150ms' }} />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-[#00267F]" style={{ animationDelay: '300ms' }} />
+                        </div>
+                        <span className="text-sm font-accent text-ink/70">Thinking...</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
