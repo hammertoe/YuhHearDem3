@@ -2,8 +2,8 @@
 
 from datetime import datetime
 
-from lib.order_papers.models import AgendaItem, OrderPaper, OrderPaperSpeaker
 from lib.google_client import GeminiClient
+from lib.order_papers.models import AgendaItem, OrderPaper, OrderPaperSpeaker
 
 
 class OrderPaperParser:

@@ -23,7 +23,6 @@ from tenacity import (
 
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
-from lib.knowledge_graph.window_builder import ConceptWindow, Window
 from lib.knowledge_graph.oss_two_pass import (
     RefineMode,
     TwoPassMode,
@@ -35,6 +34,7 @@ from lib.knowledge_graph.oss_two_pass import (
     normalize_utterance_ids_in_data,
     validate_kg_llm_data,
 )
+from lib.knowledge_graph.window_builder import ConceptWindow, Window
 
 load_dotenv()
 

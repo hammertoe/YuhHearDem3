@@ -8,18 +8,18 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from psycopg import errors as pg_errors
 from google import genai
 from google.genai.types import GenerateContentConfig
+from psycopg import errors as pg_errors
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
 )
 
-from lib.db.postgres_client import PostgresClient
 from lib.db.chat_schema import ensure_chat_schema
 from lib.db.pgvector import vector_literal
+from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import normalize_label
 

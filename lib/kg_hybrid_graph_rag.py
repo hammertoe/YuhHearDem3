@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import re
 import json
+import re
 from typing import Any
 
 from lib.db.pgvector import vector_literal
@@ -257,6 +257,7 @@ Example: [{{"id": "kg_123", "relevance": 0.9, "topic_match": 0.8, "specificity":
 
     try:
         from google import genai
+
         from lib.utils.config import config
 
         client = genai.Client(api_key=config.embedding.api_key)

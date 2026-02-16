@@ -5,13 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from google import genai
-from google.genai import types
-from google.genai import errors
+from google.genai import errors, types
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 from lib.utils.config import config

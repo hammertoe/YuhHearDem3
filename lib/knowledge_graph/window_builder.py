@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from lib.db.postgres_client import PostgresClient
 from lib.db.pgvector import vector_literal
+from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 
 DEFAULT_WINDOW_SIZE = 30

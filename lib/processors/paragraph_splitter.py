@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from lib.id_generators import (
-    parse_timestamp_to_seconds,
     generate_paragraph_id,
+    parse_timestamp_to_seconds,
 )
 
 

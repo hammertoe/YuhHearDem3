@@ -3,10 +3,10 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 from google import genai
 from google.genai.types import GenerateContentConfig
-from typing import Any
 
 
 class GeminiClient:

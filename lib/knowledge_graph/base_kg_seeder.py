@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from lib.db.pgvector import vector_literal
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import generate_kg_node_id, normalize_label
-from lib.db.pgvector import vector_literal
 
 
 class BaseKGSeeder:

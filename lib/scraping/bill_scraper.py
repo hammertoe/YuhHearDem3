@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 import time
-import argparse
-from typing import Any
 from datetime import datetime
+from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 from lib.utils.config import config

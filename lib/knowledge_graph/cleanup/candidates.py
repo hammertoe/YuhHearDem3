@@ -10,8 +10,8 @@ from lib.knowledge_graph.cleanup.contracts import is_generic_guarded_label
 from lib.knowledge_graph.cleanup.normalize import (
     extract_initials,
     extract_surname,
-    strip_honorifics,
     normalize_for_matching,
+    strip_honorifics,
 )
 
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import re
 import argparse
 import json
+import re
 from typing import Any
 
 from rapidfuzz import fuzz

@@ -6,11 +6,11 @@ from typing import Any
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import generate_bill_id, generate_entity_id
-from lib.roles import infer_role_kind, normalize_person_name, normalize_role_label
 from lib.processors.paragraph_splitter import (
     group_transcripts_into_paragraphs,
     split_paragraph_into_sentences,
 )
+from lib.roles import infer_role_kind, normalize_person_name, normalize_role_label
 
 
 def _format_vector(embedding: list[float]) -> str:

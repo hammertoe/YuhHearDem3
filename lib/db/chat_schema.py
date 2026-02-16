@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 CHAT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS chat_threads (

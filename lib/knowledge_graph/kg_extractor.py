@@ -14,10 +14,10 @@ from tenacity import (
     wait_exponential,
 )
 
+from lib.db.pgvector import vector_literal
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
 from lib.id_generators import generate_kg_edge_id, generate_kg_node_id, normalize_label
-from lib.db.pgvector import vector_literal
 from lib.knowledge_graph.window_builder import (
     ConceptWindow,
     Window,

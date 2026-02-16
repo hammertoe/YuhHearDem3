@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Any
 from datetime import datetime
+from typing import Any
 
 from lib.db.postgres_client import PostgresClient
 from lib.embeddings.google_client import GoogleEmbeddingClient
