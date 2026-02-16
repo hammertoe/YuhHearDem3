@@ -248,7 +248,9 @@ def _retrieve_seed_nodes(
     query: str,
     seed_k: int,
 ) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
+    vector_candidates: list[dict[str, Any]] = []
+    fulltext_candidates: list[dict[str, Any]] = []
+    alias_candidates: list[dict[str, Any]] = []
 
     # Vector search (best when embeddings exist)
     try:
@@ -265,7 +267,7 @@ def _retrieve_seed_nodes(
         )
         for row in rows:
             distance = float(row[4] or 0.0)
-            candidates.append(
+            vector_candidates.append(
                 {
                     "id": row[0],
                     "type": row[1],
@@ -292,7 +294,7 @@ def _retrieve_seed_nodes(
     )
     for row in rows:
         rank = float(row[4] or 0.0)
-        candidates.append(
+        fulltext_candidates.append(
             {
                 "id": row[0],
                 "type": row[1],
@@ -319,7 +321,7 @@ def _retrieve_seed_nodes(
             (alias_norm,),
         )
         for row in rows:
-            candidates.append(
+            alias_candidates.append(
                 {
                     "id": row[0],
                     "type": row[1],
@@ -332,10 +334,37 @@ def _retrieve_seed_nodes(
     except Exception:
         pass
 
-    # Dedupe and keep best scores first
-    deduped = _dedupe_by_id(candidates)
-    deduped.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
-    return deduped[:seed_k]
+    def sort_by_score(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        items.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+        return items
+
+    vector_sorted = sort_by_score(_dedupe_by_id(vector_candidates))
+    fulltext_sorted = sort_by_score(_dedupe_by_id(fulltext_candidates))
+    alias_sorted = sort_by_score(_dedupe_by_id(alias_candidates))
+
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add_items(items: list[dict[str, Any]]) -> None:
+        for item in items:
+            item_id = str(item.get("id", ""))
+            if not item_id or item_id in seen:
+                continue
+            seen.add(item_id)
+            out.append(item)
+            if len(out) >= seed_k:
+                return
+
+    add_items(alias_sorted)
+
+    vector_quota = min(len(vector_sorted), max(1, seed_k // 2))
+    add_items(vector_sorted[:vector_quota])
+    if len(out) < seed_k:
+        add_items(fulltext_sorted)
+    if len(out) < seed_k:
+        add_items(vector_sorted[vector_quota:])
+
+    return out[:seed_k]
 
 
 def _retrieve_edges_hops_1(

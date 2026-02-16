@@ -161,6 +161,91 @@ def test_kg_hybrid_graph_rag_returns_compact_subgraph():
     assert c["speaker_title"] == "Minister"
 
 
+def test_kg_hybrid_graph_rag_respects_bill_citation_limit() -> None:
+    from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag_with_bills
+
+    postgres = _FakePostgres()
+    embedding = _FakeEmbedding()
+
+    out = kg_hybrid_graph_rag_with_bills(
+        postgres=postgres,
+        embedding_client=embedding,
+        query="water management",
+        hops=1,
+        seed_k=5,
+        max_edges=20,
+        max_citations=5,
+        max_bill_citations=1,
+    )
+
+    assert len(out["bill_citations"]) == 1
+
+
+def test_kg_hybrid_graph_rag_keeps_vector_seeds_when_fulltext_is_generic() -> None:
+    from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
+
+    class _FakePostgresSeedBias(_FakePostgres):
+        def execute_query(self, sql: str, params: tuple[Any, ...] | None = None):
+            if "FROM kg_nodes" in sql and "embedding <=>" in sql:
+                return [
+                    (
+                        "kg_water",
+                        "skos:Concept",
+                        "water management",
+                        ["water"],
+                        0.1,
+                    )
+                ]
+
+            if "FROM kg_nodes" in sql and "plainto_tsquery" in sql:
+                return [
+                    (
+                        "kg_ministers",
+                        "foaf:Group",
+                        "ministers",
+                        ["minister"],
+                        5.0,
+                    ),
+                    (
+                        "kg_ministers_2",
+                        "skos:Concept",
+                        "ministerial powers",
+                        ["ministers"],
+                        4.2,
+                    ),
+                ]
+
+            if "FROM kg_nodes" in sql and "WHERE id IN" in sql:
+                return [
+                    ("kg_water", "water management", "skos:Concept"),
+                    ("kg_ministers", "ministers", "foaf:Group"),
+                    ("kg_ministers_2", "ministerial powers", "skos:Concept"),
+                ]
+
+            if "FROM kg_edges" in sql:
+                return []
+
+            if "FROM sentences" in sql:
+                return []
+
+            if "FROM order_papers" in sql and "jsonb_array_elements" in sql:
+                return []
+
+            return super().execute_query(sql, params)
+
+    out = kg_hybrid_graph_rag(
+        postgres=_FakePostgresSeedBias(),
+        embedding_client=_FakeEmbedding(),
+        query="What did ministers say about water management recently",
+        hops=1,
+        seed_k=5,
+        max_edges=10,
+        max_citations=5,
+    )
+
+    assert any("water" in (s.get("label") or "").lower() for s in out["seeds"])
+
+
 def test_kg_hybrid_graph_rag_falls_back_to_speakers_position_when_no_session_role() -> None:
     from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
 
