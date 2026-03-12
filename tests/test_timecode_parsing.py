@@ -25,3 +25,9 @@ def test_parse_timecode_accepts_three_part_milliseconds() -> None:
     result = parse_timecode_to_timedelta("0:1:700")
 
     assert result == timedelta(seconds=1, milliseconds=700)
+
+
+def test_parse_timecode_accepts_hour_minute_rollover() -> None:
+    result = parse_timecode_to_timedelta("0:87:00")
+
+    assert result == timedelta(minutes=87)

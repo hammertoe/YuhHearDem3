@@ -356,7 +356,11 @@ def parse_timecode_to_timedelta(value: str) -> timedelta:
         raise ValueError(f"Invalid timecode values: {value}")
 
     if len(parts) >= 3 and mins_value >= 60:
-        raise ValueError(f"Invalid timecode values: {value}")
+        if float(hours) == 0:
+            hours = str(int(mins_value // 60))
+            mins_value = mins_value % 60
+        else:
+            raise ValueError(f"Invalid timecode values: {value}")
 
     if millis_value >= 1000:
         raise ValueError(f"Invalid millisecond value: {value}")
