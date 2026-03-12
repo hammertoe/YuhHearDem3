@@ -1,9 +1,12 @@
 import argparse
 import enum
 import json
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any, cast
 
 import pydantic
 import tenacity
@@ -97,6 +100,10 @@ Use these stable speaker IDs and names if you recognize the same person (voice I
 
 **Previous Context (last 5 sentences)**
 {{recent_context}}
+
+**Reference Captions (same time window)**
+Use this as a rough reference only. If it conflicts with the audio/video, prefer the audio/video.
+{{caption_context}}
 
 **Task 1 - Transcripts**
 
@@ -324,6 +331,143 @@ def get_previous_context(transcripts: list[Transcript], count: int = 5) -> str:
     return "\n".join(lines)
 
 
+def parse_timecode_to_timedelta(value: str) -> timedelta:
+    parts = value.split(":")
+    if len(parts) == 4:
+        hours, mins, secs, millis = parts
+    elif len(parts) == 3:
+        hours, mins, secs = parts
+        millis = "0"
+    elif len(parts) == 2:
+        hours = "0"
+        mins, secs = parts
+        millis = "0"
+    else:
+        raise ValueError(f"Unexpected timecode format: {value}")
+
+    if float(mins) >= 60 or float(secs) >= 60:
+        raise ValueError(f"Invalid timecode values: {value}")
+
+    if float(millis) >= 1000:
+        raise ValueError(f"Invalid millisecond value: {value}")
+
+    return timedelta(
+        hours=float(hours),
+        minutes=float(mins),
+        seconds=float(secs),
+        milliseconds=float(millis),
+    )
+
+
+def format_timedelta_as_timecode(value: timedelta) -> str:
+    total_seconds = int(value.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    return f"{hours}:{minutes:02d}:{seconds:02d}"
+
+
+def normalize_caption_text(text: str) -> str:
+    normalized = re.sub(r"<[^>]+>", " ", text)
+    normalized = re.sub(r"[^a-zA-Z0-9\s]", " ", normalized.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def clean_vtt_text(text: str) -> str:
+    cleaned = re.sub(r"<[^>]+>", " ", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def caption_similarity_score(left: str, right: str) -> float:
+    left_norm = normalize_caption_text(left)
+    right_norm = normalize_caption_text(right)
+    if not left_norm or not right_norm:
+        return 0.0
+    return float(fuzz.token_set_ratio(left_norm, right_norm))
+
+
+@dataclass(frozen=True)
+class CaptionGuardrailResult:
+    status: str
+    similarity: float
+    reason: str
+
+    def as_dict(self) -> dict[str, str | float]:
+        return {"status": self.status, "similarity": self.similarity, "reason": self.reason}
+
+
+def build_transcript_guardrail_text(
+    transcripts: list[Transcript],
+    *,
+    max_seconds: int | None,
+) -> str:
+    if max_seconds is None:
+        return " ".join(t.text for t in transcripts)
+
+    filtered = [
+        t.text
+        for t in transcripts
+        if parse_timecode_to_timedelta(t.start).total_seconds() <= max_seconds
+    ]
+    return " ".join(filtered)
+
+
+def validate_transcript_against_captions(
+    transcripts: list[Transcript],
+    captions_text: str,
+    *,
+    min_similarity: float,
+    max_seconds: int | None,
+) -> CaptionGuardrailResult:
+    if not captions_text.strip():
+        return CaptionGuardrailResult(
+            status="no_captions",
+            similarity=0.0,
+            reason="No captions available for comparison.",
+        )
+
+    transcript_text = build_transcript_guardrail_text(transcripts, max_seconds=max_seconds)
+    if not transcript_text.strip():
+        return CaptionGuardrailResult(
+            status="empty_transcript",
+            similarity=0.0,
+            reason="Transcript is empty; cannot validate against captions.",
+        )
+
+    similarity = caption_similarity_score(transcript_text, captions_text)
+    if similarity >= min_similarity:
+        return CaptionGuardrailResult(
+            status="ok",
+            similarity=similarity,
+            reason="Transcript matches captions within threshold.",
+        )
+
+    return CaptionGuardrailResult(
+        status="mismatch",
+        similarity=similarity,
+        reason="Transcript diverges from captions beyond threshold.",
+    )
+
+
+def normalize_segment_transcript_timecodes(
+    transcripts: list[Transcript],
+    segment_start: timedelta,
+    tolerance: timedelta = timedelta(seconds=2),
+) -> list[Transcript]:
+    if not transcripts:
+        return transcripts
+
+    min_time = min(parse_timecode_to_timedelta(t.start) for t in transcripts)
+    if min_time < segment_start - tolerance:
+        for transcript in transcripts:
+            offset_time = parse_timecode_to_timedelta(transcript.start) + segment_start
+            transcript.start = format_timedelta_as_timecode(offset_time)
+
+    return transcripts
+
+
 def deduplicate_transcripts(
     new_transcripts: list[Transcript],
     overlap_start: timedelta,
@@ -334,13 +478,7 @@ def deduplicate_transcripts(
     filtered = []
 
     for transcript in new_transcripts:
-        time_parts = transcript.start.split(":")
-        if len(time_parts) == 3:
-            hours, mins, secs = map(float, time_parts)
-            transcript_time = timedelta(hours=hours, minutes=mins, seconds=secs)
-        else:
-            mins, secs = map(float, time_parts)
-            transcript_time = timedelta(minutes=mins, seconds=secs)
+        transcript_time = parse_timecode_to_timedelta(transcript.start)
 
         if transcript_time < overlap_start - tolerance:
             filtered.append(transcript)
@@ -417,6 +555,137 @@ def get_video_part_metadata(
         end_offset = None
 
     return VideoMetadata(start_offset=start_offset, end_offset=end_offset, fps=fps)
+
+
+def parse_vtt_timecode(value: str) -> float:
+    parts = value.split(":")
+    if len(parts) == 3:
+        hours, minutes, seconds = parts
+    else:
+        hours = "0"
+        minutes, seconds = parts
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def parse_vtt_cues(vtt_text: str) -> list[tuple[float, float, str]]:
+    cues: list[tuple[float, float, str]] = []
+    current_start: float | None = None
+    current_end: float | None = None
+    current_lines: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_start, current_end, current_lines
+        if current_start is None or current_end is None:
+            return
+        text = clean_vtt_text(" ".join(current_lines))
+        if text:
+            cues.append((current_start, current_end, text))
+        current_start = None
+        current_end = None
+        current_lines = []
+
+    for line in vtt_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            flush()
+            continue
+        if stripped.startswith("WEBVTT") or stripped.startswith("Kind:"):
+            continue
+        if stripped.startswith("Language:"):
+            continue
+        if "-->" in stripped:
+            flush()
+            start, end = stripped.split("-->", maxsplit=1)
+            current_start = parse_vtt_timecode(start.strip())
+            current_end = parse_vtt_timecode(end.strip().split()[0])
+            continue
+        current_lines.append(stripped)
+
+    flush()
+    return cues
+
+
+def build_caption_context(
+    cues: list[tuple[float, float, str]],
+    segment_start: timedelta,
+    segment_end: timedelta,
+    *,
+    buffer_seconds: int,
+    max_chars: int,
+) -> str:
+    start_sec = max(0.0, segment_start.total_seconds() - buffer_seconds)
+    end_sec = segment_end.total_seconds() + buffer_seconds
+    lines = [text for start, end, text in cues if start <= end_sec and end >= start_sec]
+    if not lines:
+        return ""
+    context = " ".join(lines)
+    if max_chars > 0:
+        return context[:max_chars]
+    return context
+
+
+def extract_text_from_vtt(vtt_text: str, *, max_seconds: int | None) -> str:
+    lines: list[str] = []
+    current_start: float | None = None
+
+    for line in vtt_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("WEBVTT") or stripped.startswith("Kind:"):
+            continue
+        if stripped.startswith("Language:"):
+            continue
+        if "-->" in stripped:
+            start, _ = stripped.split("-->", maxsplit=1)
+            current_start = parse_vtt_timecode(start.strip())
+            continue
+        if current_start is not None and max_seconds is not None:
+            if current_start > max_seconds:
+                continue
+        lines.append(clean_vtt_text(stripped))
+
+    return " ".join(lines)
+
+
+def fetch_youtube_captions_vtt(video_url: str) -> str | None:
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_template = os.path.join(temp_dir, "%(id)s")
+            ydl_opts: dict[str, Any] = {
+                "skip_download": True,
+                "quiet": True,
+                "no_warnings": True,
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": ["en"],
+                "subtitlesformat": "vtt",
+                "outtmpl": output_template,
+            }
+            with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
+                info = ydl.extract_info(video_url, download=True)
+                video_id = info.get("id") if isinstance(info, dict) else None
+                if not video_id:
+                    return None
+                vtt_path = os.path.join(temp_dir, f"{video_id}.en.vtt")
+                if not os.path.exists(vtt_path):
+                    return None
+                with open(vtt_path, encoding="utf-8") as handle:
+                    return handle.read()
+    except Exception as e:
+        print(f"⚠️ Caption fetch failed: {e}")
+        return None
+
+
+def fetch_youtube_captions_text(
+    video_url: str,
+    *,
+    max_seconds: int | None,
+) -> str | None:
+    vtt_text = fetch_youtube_captions_vtt(video_url)
+    if not vtt_text:
+        return None
+    return extract_text_from_vtt(vtt_text, max_seconds=max_seconds)
 
 
 def convert_to_https_url_if_cloud_storage_uri(uri: str) -> str:
@@ -573,6 +842,7 @@ def get_video_transcription_segment(
     order_text: str,
     known_speakers_context: str,
     recent_context: str,
+    caption_context: str,
     video_metadata: VideoMetadataInfo,
 ) -> VideoTranscriptionEnhanced:
     """Process a single video segment."""
@@ -596,6 +866,7 @@ def get_video_transcription_segment(
         video_date=video_metadata.upload_date,
         known_speakers_context=known_speakers_context,
         recent_context=recent_context,
+        caption_context=caption_context or "No reference captions available.",
     )
 
     contents = [video_part, prompt.strip()]
@@ -631,6 +902,13 @@ def process_video_iteratively(
     max_segments: int | None = None,
     order_file: str | None = None,
     order_paper_id: str | None = None,
+    validate_with_captions: bool = False,
+    caption_guardrail_min_similarity: float = 45.0,
+    caption_guardrail_mode: str = "warn",
+    caption_guardrail_max_seconds: int | None = 1200,
+    include_caption_context: bool = False,
+    caption_context_max_chars: int = 1200,
+    caption_context_buffer_seconds: int = 30,
 ) -> dict:
     """
     Process video in overlapping segments.
@@ -665,6 +943,13 @@ def process_video_iteratively(
         with open(order_file) as f:
             order_text = f.read().strip()
 
+    vtt_text: str | None = None
+    caption_cues: list[tuple[float, float, str]] = []
+    if validate_with_captions or include_caption_context:
+        vtt_text = fetch_youtube_captions_vtt(video.value)
+        if vtt_text:
+            caption_cues = parse_vtt_cues(vtt_text)
+
     while segment_start < total_duration:
         if max_segments and segment_num >= max_segments:
             print(f"🛑 Reached max segments limit: {max_segments}")
@@ -679,6 +964,15 @@ def process_video_iteratively(
 
         known_speakers_context = format_known_speakers(known_speakers_by_id)
         recent_context = get_previous_context(all_transcripts, 5)
+        caption_context = ""
+        if include_caption_context and caption_cues:
+            caption_context = build_caption_context(
+                caption_cues,
+                segment_start,
+                segment_end,
+                buffer_seconds=caption_context_buffer_seconds,
+                max_chars=caption_context_max_chars,
+            )
 
         result = None
         for attempt_num in range(3):
@@ -690,6 +984,7 @@ def process_video_iteratively(
                     order_text,
                     known_speakers_context,
                     recent_context,
+                    caption_context,
                     video_metadata,
                 )
                 break
@@ -704,6 +999,10 @@ def process_video_iteratively(
             segment_start = segment_end - timedelta(minutes=overlap_duration)
             segment_num += 1
             continue
+
+        result.task1_transcripts = normalize_segment_transcript_timecodes(
+            result.task1_transcripts, segment_start
+        )
 
         if segment_num > 0:
             overlap_start = segment_start - timedelta(minutes=overlap_duration)
@@ -742,13 +1041,38 @@ def process_video_iteratively(
         segment_start = next_segment_start
         segment_num += 1
 
-    return {
+    caption_guardrail: CaptionGuardrailResult | None = None
+    if validate_with_captions:
+        captions_text = None
+        if vtt_text:
+            captions_text = extract_text_from_vtt(
+                vtt_text, max_seconds=caption_guardrail_max_seconds
+            )
+        caption_guardrail = validate_transcript_against_captions(
+            all_transcripts,
+            captions_text or "",
+            min_similarity=caption_guardrail_min_similarity,
+            max_seconds=caption_guardrail_max_seconds,
+        )
+        print(
+            "✅ Caption guardrail status: "
+            f"{caption_guardrail.status} (similarity={caption_guardrail.similarity:.2f})"
+        )
+        if caption_guardrail.status == "mismatch" and caption_guardrail_mode == "fail":
+            raise ValueError("Caption guardrail mismatch; aborting transcript.")
+
+    result = {
         "transcripts": all_transcripts,
         "speakers": known_speakers_by_id,
         "speaker_voice_samples": speaker_voice_samples,
         "legislation": all_legislation,
         "video_metadata": video_metadata,
     }
+
+    if caption_guardrail:
+        result["caption_guardrail"] = caption_guardrail.as_dict()
+
+    return result
 
 
 def get_order_paper_from_db(order_paper_id: str) -> str:
@@ -901,6 +1225,46 @@ if __name__ == "__main__":
         default="transcription_output.json",
         help="Output JSON file path (default: transcription_output.json)",
     )
+    parser.add_argument(
+        "--validate-with-captions",
+        action="store_true",
+        help="Validate transcript against YouTube captions",
+    )
+    parser.add_argument(
+        "--caption-guardrail-min-similarity",
+        type=float,
+        default=45.0,
+        help="Minimum similarity required to pass caption guardrail (default: 45.0)",
+    )
+    parser.add_argument(
+        "--caption-guardrail-max-seconds",
+        type=int,
+        default=1200,
+        help="Seconds of transcript to compare in guardrail (default: 1200)",
+    )
+    parser.add_argument(
+        "--caption-guardrail-mode",
+        choices=("warn", "fail"),
+        default="warn",
+        help="Behavior when caption guardrail fails (warn|fail)",
+    )
+    parser.add_argument(
+        "--caption-context",
+        action="store_true",
+        help="Include YouTube caption snippet in prompt as reference",
+    )
+    parser.add_argument(
+        "--caption-context-max-chars",
+        type=int,
+        default=1200,
+        help="Max characters of caption context to include (default: 1200)",
+    )
+    parser.add_argument(
+        "--caption-context-buffer-seconds",
+        type=int,
+        default=30,
+        help="Seconds of buffer around segment for caption context (default: 30)",
+    )
     args = parser.parse_args()
 
     video: Video | DynamicVideo
@@ -924,6 +1288,13 @@ if __name__ == "__main__":
         max_segments=args.max_segments,
         order_file=args.order_file,
         order_paper_id=args.order_paper_id,
+        validate_with_captions=args.validate_with_captions,
+        caption_guardrail_min_similarity=args.caption_guardrail_min_similarity,
+        caption_guardrail_mode=args.caption_guardrail_mode,
+        caption_guardrail_max_seconds=args.caption_guardrail_max_seconds,
+        include_caption_context=args.caption_context,
+        caption_context_max_chars=args.caption_context_max_chars,
+        caption_context_buffer_seconds=args.caption_context_buffer_seconds,
     )
 
     print_combined_results(results)

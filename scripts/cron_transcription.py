@@ -82,8 +82,12 @@ class CronJobManager:
         for video_id, video_info in watchlist.get("videos", {}).items():
             last_processed = video_info.get("last_processed", None)
             auto_process = video_info.get("auto_process", False)
+            status = video_info.get("status", "pending")
 
             if not auto_process:
+                continue
+
+            if status == "processed":
                 continue
 
             if not last_processed:
@@ -109,16 +113,14 @@ class CronJobManager:
         print(f"Title: {video_title}")
         print(f"{'=' * 80}")
 
-        output_file = f"transcription_output_{video_id}.json"
         matched_order_paper_id = self._auto_match_order_paper(video_id, video_title)
 
         cmd = [
             "python",
             self.transcribe_script,
-            "--video",
-            video_id,
+            "--video=" + video_id,
             "--output-file",
-            output_file,
+            f"transcription_output_{video_id}.json",
             "--segment-minutes",
             str(segment_minutes),
         ]
