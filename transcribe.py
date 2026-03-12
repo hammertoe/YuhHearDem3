@@ -338,6 +338,9 @@ def parse_timecode_to_timedelta(value: str) -> timedelta:
     elif len(parts) == 3:
         hours, mins, secs = parts
         millis = "0"
+        if float(secs) >= 60 and float(secs) < 1000:
+            hours = "0"
+            mins, secs, millis = parts
     elif len(parts) == 2:
         hours = "0"
         mins, secs = parts
@@ -345,17 +348,24 @@ def parse_timecode_to_timedelta(value: str) -> timedelta:
     else:
         raise ValueError(f"Unexpected timecode format: {value}")
 
-    if float(mins) >= 60 or float(secs) >= 60:
+    mins_value = float(mins)
+    secs_value = float(secs)
+    millis_value = float(millis)
+
+    if secs_value >= 60:
         raise ValueError(f"Invalid timecode values: {value}")
 
-    if float(millis) >= 1000:
+    if len(parts) >= 3 and mins_value >= 60:
+        raise ValueError(f"Invalid timecode values: {value}")
+
+    if millis_value >= 1000:
         raise ValueError(f"Invalid millisecond value: {value}")
 
     return timedelta(
         hours=float(hours),
-        minutes=float(mins),
-        seconds=float(secs),
-        milliseconds=float(millis),
+        minutes=mins_value,
+        seconds=secs_value,
+        milliseconds=millis_value,
     )
 
 
