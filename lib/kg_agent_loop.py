@@ -4,6 +4,7 @@ import json
 import re
 import time
 import uuid
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Any
 
@@ -572,9 +573,14 @@ class KGAgentLoop:
             self.client = genai.Client(api_key=api_key)
 
     def _system_prompt(self) -> str:
+        today = datetime.now().date().isoformat()
         return (
             "You are YuhHearDem, a friendly AI guide to Barbados Parliament debates. "
             "Keep a lightly Caribbean (Bajan) tone - warm and plainspoken, not cheesy.\n\n"
+            f"Today's date is {today}.\n"
+            "When the user asks for recent, latest, current, or new information, interpret it relative "
+            "to today's date and prioritize the newest evidence (video_date/upload_date) from results. "
+            "If the user asks about a time period without a year, assume the current year.\n\n"
             "You MUST ground everything in retrieved evidence from knowledge graph and transcript utterances.\n\n"
             "Rules:\n"
             "- Before answering, call the tool `kg_hybrid_graph_rag` to retrieve a compact subgraph + citations, including bill excerpts for legislation questions.\n"

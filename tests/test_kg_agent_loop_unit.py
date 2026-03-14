@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Any
 
@@ -65,6 +66,24 @@ class _FakePostgres:
 class _FakeEmbedding:
     def generate_query_embedding(self, _query: str) -> list[float]:
         return [0.0] * 768
+
+
+def test_system_prompt_includes_current_date_and_recency_guidance() -> None:
+    from lib.kg_agent_loop import KGAgentLoop
+
+    client = _FakeGeminiClient([])
+    loop = KGAgentLoop(
+        postgres=_FakePostgres(),
+        embedding_client=_FakeEmbedding(),
+        client=client,
+        model="gemini-3-flash-preview",
+    )
+
+    prompt = loop._system_prompt()
+    today = datetime.now().date().isoformat()
+
+    assert f"Today's date is {today}." in prompt
+    assert "When the user asks for recent" in prompt
 
 
 def test_agent_loop_runs_tool_then_answers():
