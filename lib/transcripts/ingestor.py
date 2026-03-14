@@ -404,8 +404,7 @@ class TranscriptIngestor:
             """
             INSERT INTO bills (id, bill_number, title, description, status)
             VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                bill_number = EXCLUDED.bill_number,
+            ON CONFLICT (bill_number) DO UPDATE SET
                 title = EXCLUDED.title,
                 description = COALESCE(NULLIF(EXCLUDED.description, ''), bills.description),
                 updated_at = NOW()

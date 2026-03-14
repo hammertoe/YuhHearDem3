@@ -137,3 +137,48 @@ def test_transcript_ingestor_should_upsert_legislation_into_bills() -> None:
         if "INSERT INTO bills" in call.args[0]
     ]
     assert len(bill_queries) == 1
+
+
+def test_transcript_ingestor_upserts_bills_by_bill_number() -> None:
+    postgres = Mock()
+    embeddings = Mock()
+    embeddings.generate_embeddings_batch.return_value = [[0.0] * 768]
+
+    ingestor = TranscriptIngestor(
+        postgres=postgres,
+        embedding_client=embeddings,
+    )
+
+    transcript_data = {
+        "video_metadata": {
+            "title": "Test Video",
+            "upload_date": "20260106",
+            "duration": "0:01:00",
+        },
+        "speakers": [],
+        "transcripts": [
+            {
+                "start": "00:00:10",
+                "text": "The Appropriation Bill 2026 is important.",
+                "voice_id": 1,
+                "speaker_id": "s_speaker_1",
+            }
+        ],
+        "legislation": [
+            {
+                "id": "L_APPROPRIATION_BILL_1",
+                "name": "Appropriation Bill 2026",
+                "description": "Annual appropriations",
+                "source": "audio",
+            }
+        ],
+    }
+
+    ingestor.ingest_transcript_json(transcript_data, youtube_video_id="test_video")
+
+    bill_queries = [
+        call.args[0]
+        for call in postgres.execute_update.call_args_list
+        if "INSERT INTO bills" in call.args[0]
+    ]
+    assert any("ON CONFLICT (bill_number)" in query for query in bill_queries)
