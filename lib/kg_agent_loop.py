@@ -95,15 +95,20 @@ def _augment_query_with_speakers(
     if not message_norm:
         return base
 
+    tokens = [t for t in message_norm.split() if len(t) > 2]
+    if not tokens:
+        return base
+
+    token_params = [f"%{t}%" for t in tokens[:5]]
+    token_clauses = " OR ".join(["full_name ILIKE %s" for _ in token_params])
     rows = postgres.execute_query(
-        """
+        f"""
         SELECT full_name, normalized_name
         FROM speakers
-        WHERE %s LIKE CONCAT('%%', normalized_name, '%%')
-        ORDER BY length(normalized_name) DESC
-        LIMIT %s
+        WHERE full_name IS NOT NULL AND ({token_clauses})
+        LIMIT 25
         """,
-        (message_norm, int(max_speakers)),
+        tuple(token_params),
     )
 
     if not rows:
@@ -112,10 +117,15 @@ def _augment_query_with_speakers(
     query_norm = normalize_label(base)
     additions: list[str] = []
     for full_name, normalized_name in rows:
-        candidate = (full_name or normalized_name or "").strip()
+        candidate = (full_name or "").strip()
+        if not candidate and normalized_name and not str(normalized_name).startswith("s_"):
+            candidate = str(normalized_name).strip()
         if not candidate:
             continue
-        if normalize_label(candidate) in query_norm:
+        candidate_norm = normalize_label(candidate)
+        if not candidate_norm or candidate_norm not in message_norm:
+            continue
+        if candidate_norm in query_norm:
             continue
         additions.append(candidate)
 
