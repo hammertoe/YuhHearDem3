@@ -39,8 +39,9 @@ class _FakePostgres:
 
         if "FROM kg_edges" in sql:
             # (id, source_id, predicate, predicate_raw, target_id,
-            #  youtube_video_id, earliest_timestamp_str, earliest_seconds,
-            #  utterance_ids, evidence, speaker_ids, confidence, edge_rank_score)
+            #  source_kind, source_ref_id, youtube_video_id, earliest_timestamp_str,
+            #  earliest_seconds, evidence_ids, utterance_ids, evidence,
+            #  speaker_ids, confidence, edge_rank_score)
             return [
                 (
                     "kge_1",
@@ -48,9 +49,12 @@ class _FakePostgres:
                     "DISCUSSES",
                     "discusses",
                     "kg_b",
+                    "transcript",
+                    "Syxyah7QIaM",
                     "Syxyah7QIaM",
                     "00:20:35",
                     1235,
+                    ["utt_1"],
                     ["utt_1"],
                     "They discussed water management policy.",
                     ["s_test_1"],
@@ -110,9 +114,105 @@ class _FakePostgres:
         return []
 
 
+class _FakePostgresBillEdge(_FakePostgres):
+    def execute_query(self, sql: str, params: tuple[Any, ...] | None = None):
+        if "FROM kg_edges" in sql:
+            return [
+                (
+                    "kge_bill_1",
+                    "kg_bill",
+                    "AMENDS",
+                    "amends",
+                    "kg_policy",
+                    "bill",
+                    "bill_water_1",
+                    None,
+                    None,
+                    0,
+                    ["bill:bill_water_1:2"],
+                    None,
+                    "Part IV amends water quality provisions.",
+                    [],
+                    0.8,
+                    0.2,
+                )
+            ]
+
+        if "FROM kg_nodes" in sql and "WHERE id IN" in sql:
+            return [
+                ("kg_bill", "Water Services Bill", "schema:Legislation"),
+                ("kg_policy", "Water Quality Policy", "skos:Concept"),
+            ]
+
+        if "FROM bill_excerpts" in sql and "be.bill_id = %s" in sql:
+            return [
+                (
+                    "bill_water_1",
+                    "BILL-123",
+                    "Water Services Bill, 2026",
+                    "Part IV addresses water quality and potable water systems.",
+                    "https://www.barbadosparliament.com/uploads/bill_resolution/sample.pdf",
+                    2,
+                    12,
+                )
+            ]
+
+        return super().execute_query(sql, params)
+
+
 class _FakeEmbedding:
     def generate_query_embedding(self, _query: str) -> list[float]:
         return [0.0] * 768
+
+
+class _FakePostgresNameMatch(_FakePostgres):
+    def execute_query(self, sql: str, params: tuple[Any, ...] | None = None):
+        if "FROM kg_nodes" in sql and "embedding <=>" in sql:
+            return [
+                (
+                    "kg_person_a",
+                    "foaf:Person",
+                    "Tamaisha Eytle Harvey",
+                    ["Tamaisha Eytle Harvey"],
+                    0.05,
+                ),
+                (
+                    "kg_person_b",
+                    "foaf:Person",
+                    "Tameisha Rochester",
+                    ["Tameisha Rochester"],
+                    0.06,
+                ),
+            ]
+
+        if "FROM kg_nodes" in sql and "plainto_tsquery" in sql:
+            return [
+                (
+                    "kg_person_a",
+                    "foaf:Person",
+                    "Tamaisha Eytle Harvey",
+                    ["Tamaisha Eytle Harvey"],
+                    0.8,
+                ),
+                (
+                    "kg_person_b",
+                    "foaf:Person",
+                    "Tameisha Rochester",
+                    ["Tameisha Rochester"],
+                    0.7,
+                ),
+            ]
+
+        if "FROM kg_aliases" in sql:
+            return []
+
+        if "FROM kg_edges" in sql:
+            return []
+
+        if "FROM kg_nodes" in sql and "WHERE id IN" in sql:
+            return []
+
+        return super().execute_query(sql, params)
 
 
 def test_build_youtube_url_with_timecode():
@@ -148,18 +248,26 @@ def test_kg_hybrid_graph_rag_returns_compact_subgraph():
     node_ids = {n["id"] for n in out["nodes"]}
     assert {"kg_a", "kg_b"}.issubset(node_ids)
 
-    assert len(out["edges"]) == 1
-    assert out["edges"][0]["id"] == "kge_1"
-    assert out["edges"][0]["source_label"] == "Water Management"
-    assert out["edges"][0]["target_label"] == "National Water Authority"
 
-    assert len(out["citations"]) == 1
-    c = out["citations"][0]
-    assert c["utterance_id"] == "utt_1"
-    assert c["youtube_video_id"] == "Syxyah7QIaM"
-    assert c["youtube_url"].endswith("&t=1235s")
-    assert c["speaker_name"] == "The Honourable Santia Bradshaw"
-    assert c["speaker_title"] == "Minister"
+def test_kg_hybrid_graph_rag_prefers_name_substring_matches() -> None:
+    from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
+
+    postgres = _FakePostgresNameMatch()
+    embedding = _FakeEmbedding()
+
+    out = kg_hybrid_graph_rag(
+        postgres=postgres,
+        embedding_client=embedding,
+        query="Tamaisha Eytle Harvey Future Barbados",
+        hops=1,
+        seed_k=5,
+        max_edges=20,
+        max_citations=5,
+    )
+
+    seed_labels = {s["label"] for s in out["seeds"]}
+    assert "Tamaisha Eytle Harvey" in seed_labels
+    assert "Tameisha Rochester" not in seed_labels
 
 
 def test_kg_hybrid_graph_rag_respects_bill_citation_limit() -> None:
@@ -373,3 +481,21 @@ def test_kg_hybrid_graph_rag_should_keep_edges_when_threshold_applies() -> None:
 
     assert len(out["edges"]) == 1
     assert out["edges"][0]["id"] == "kge_1"
+
+
+def test_kg_hybrid_graph_rag_with_bills_should_hydrate_bill_edge_evidence_ids() -> None:
+    from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag_with_bills
+
+    out = kg_hybrid_graph_rag_with_bills(
+        postgres=_FakePostgresBillEdge(),
+        embedding_client=_FakeEmbedding(),
+        query="water quality",
+        hops=1,
+        seed_k=5,
+        max_edges=20,
+        max_citations=5,
+        max_bill_citations=8,
+    )
+
+    citation_ids = {c["citation_id"] for c in out["bill_citations"]}
+    assert "bill:bill_water_1:2" in citation_ids

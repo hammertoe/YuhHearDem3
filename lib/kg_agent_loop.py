@@ -11,6 +11,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from lib.id_generators import normalize_label
 from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag_with_bills as kg_hybrid_graph_rag
 from lib.utils.config import config
 
@@ -81,6 +82,47 @@ def _format_tool_result_summary(result: dict[str, Any]) -> str:
         out.append(f"citations_preview={cite_ids}")
 
     return ", ".join(out)
+
+
+def _augment_query_with_speakers(
+    *, postgres: Any, query: str, user_message: str, max_speakers: int = 2
+) -> str:
+    base = (query or "").strip()
+    if not base:
+        return base
+
+    message_norm = normalize_label(user_message)
+    if not message_norm:
+        return base
+
+    rows = postgres.execute_query(
+        """
+        SELECT full_name, normalized_name
+        FROM speakers
+        WHERE %s LIKE '%' || normalized_name || '%'
+        ORDER BY length(normalized_name) DESC
+        LIMIT %s
+        """,
+        (message_norm, int(max_speakers)),
+    )
+
+    if not rows:
+        return base
+
+    query_norm = normalize_label(base)
+    additions: list[str] = []
+    for full_name, normalized_name in rows:
+        candidate = (full_name or normalized_name or "").strip()
+        if not candidate:
+            continue
+        if normalize_label(candidate) in query_norm:
+            continue
+        additions.append(candidate)
+
+    if not additions:
+        return base
+
+    return f"{base} {' '.join(additions)}".strip()
 
 
 def _truncate_text(text: str, max_len: int = 300) -> str:
@@ -794,10 +836,16 @@ class KGAgentLoop:
                         self.progress_callback(
                             "searching", "Finding relevant debates (graph + citations)..."
                         )
+                    base_query = str(fc.args.get("query", ""))
+                    resolved_query = _augment_query_with_speakers(
+                        postgres=self.postgres,
+                        query=base_query,
+                        user_message=user_message,
+                    )
                     tool_result = kg_hybrid_graph_rag(
                         postgres=self.postgres,
                         embedding_client=self.embedding_client,
-                        query=str(fc.args.get("query", "")),
+                        query=resolved_query,
                         hops=int(fc.args.get("hops", 1)),
                         seed_k=int(fc.args.get("seed_k", 12)),
                         max_edges=int(fc.args.get("max_edges", 90)),

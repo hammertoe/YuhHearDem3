@@ -63,6 +63,11 @@ class _FakePostgres:
         return None
 
 
+class _FakePostgresSpeakerMatch(_FakePostgres):
+    def execute_query(self, _sql: str, _params: Any = None):
+        return [("Tamaisha Eytle Harvey", "tamaisha eytle harvey")]
+
+
 class _FakeEmbedding:
     def generate_query_embedding(self, _query: str) -> list[float]:
         return [0.0] * 768
@@ -84,6 +89,22 @@ def test_system_prompt_includes_current_date_and_recency_guidance() -> None:
 
     assert f"Today's date is {today}." in prompt
     assert "When the user asks for recent" in prompt
+
+
+def test_augment_query_with_speakers_appends_name() -> None:
+    from lib.kg_agent_loop import _augment_query_with_speakers
+
+    postgres = _FakePostgresSpeakerMatch()
+    query = "Future Barbados health tech"
+    user_message = "What did Tamaisha Eytle Harvey say about Future Barbados?"
+
+    augmented = _augment_query_with_speakers(
+        postgres=postgres,
+        query=query,
+        user_message=user_message,
+    )
+
+    assert "Tamaisha Eytle Harvey" in augmented
 
 
 def test_agent_loop_runs_tool_then_answers():

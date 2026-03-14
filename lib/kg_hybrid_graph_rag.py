@@ -676,6 +676,24 @@ def _retrieve_seed_nodes(
         except Exception:
             pass
 
+    query_lower = query.lower()
+    query_terms = _query_terms(query_lower)
+    if len(query_terms) >= 2:
+
+        def _candidate_in_query(candidate: dict[str, Any]) -> bool:
+            label = str(candidate.get("label") or "").lower().strip()
+            if label and label in query_lower:
+                return True
+            for alias in candidate.get("aliases") or []:
+                alias_str = str(alias or "").lower().strip()
+                if alias_str and alias_str in query_lower:
+                    return True
+            return False
+
+        matched = [c for c in fused_candidates if _candidate_in_query(c)]
+        if matched:
+            return matched[:seed_k]
+
     return fused_candidates[:seed_k]
 
 
@@ -693,8 +711,9 @@ def _retrieve_edges_hops_1(
         rows = postgres.execute_query(
             f"""
             SELECT id, source_id, predicate, predicate_raw, target_id,
-                   youtube_video_id, earliest_timestamp_str, earliest_seconds,
-                   utterance_ids, evidence, speaker_ids, confidence, edge_rank_score
+                   source_kind, source_ref_id, youtube_video_id,
+                   earliest_timestamp_str, earliest_seconds,
+                   evidence_ids, utterance_ids, evidence, speaker_ids, confidence, edge_rank_score
             FROM kg_edges
             WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})
             ORDER BY edge_rank_score DESC NULLS LAST, confidence DESC NULLS LAST, earliest_seconds ASC
@@ -706,8 +725,9 @@ def _retrieve_edges_hops_1(
         rows = postgres.execute_query(
             f"""
             SELECT id, source_id, predicate, predicate_raw, target_id,
-                   youtube_video_id, earliest_timestamp_str, earliest_seconds,
-                   utterance_ids, evidence, speaker_ids, confidence
+                   source_kind, source_ref_id, youtube_video_id,
+                   earliest_timestamp_str, earliest_seconds,
+                   evidence_ids, utterance_ids, evidence, speaker_ids, confidence
             FROM kg_edges
             WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})
             ORDER BY confidence DESC NULLS LAST, earliest_seconds ASC
@@ -717,6 +737,32 @@ def _retrieve_edges_hops_1(
         )
     out: list[dict[str, Any]] = []
     for row in rows:
+        if len(row) >= 16 and str(row[5]) in {"transcript", "bill"}:
+            source_kind = str(row[5])
+            source_ref_id = str(row[6] or "")
+            youtube_video_id = row[7]
+            earliest_timestamp_str = row[8]
+            earliest_seconds = row[9]
+            evidence_ids = row[10] or []
+            legacy_utterance_ids = row[11] or []
+            evidence = row[12]
+            speaker_ids = row[13] or []
+            confidence = row[14]
+            edge_rank_score = row[15]
+        else:
+            # Legacy row shape before provenance cutover.
+            source_kind = "transcript"
+            source_ref_id = str(row[5] or "")
+            youtube_video_id = row[5]
+            earliest_timestamp_str = row[6]
+            earliest_seconds = row[7]
+            legacy_utterance_ids = row[8] or []
+            evidence_ids = legacy_utterance_ids
+            evidence = row[9]
+            speaker_ids = row[10] or []
+            confidence = row[11] if len(row) > 11 else None
+            edge_rank_score = row[12] if len(row) > 12 else None
+
         out.append(
             {
                 "id": row[0],
@@ -724,16 +770,17 @@ def _retrieve_edges_hops_1(
                 "predicate": row[2],
                 "predicate_raw": row[3],
                 "target_id": row[4],
-                "youtube_video_id": row[5],
-                "earliest_timestamp_str": row[6],
-                "earliest_seconds": int(row[7] or 0),
-                "utterance_ids": row[8] or [],
-                "evidence": row[9],
-                "speaker_ids": row[10] or [],
-                "confidence": float(row[11]) if row[11] is not None else None,
-                "edge_rank_score": float(row[12])
-                if len(row) > 12 and row[12] is not None
-                else None,
+                "source_kind": str(source_kind),
+                "source_ref_id": str(source_ref_id or ""),
+                "youtube_video_id": youtube_video_id,
+                "earliest_timestamp_str": earliest_timestamp_str,
+                "earliest_seconds": int(earliest_seconds or 0),
+                "evidence_ids": evidence_ids,
+                "utterance_ids": legacy_utterance_ids or [],
+                "evidence": evidence,
+                "speaker_ids": speaker_ids or [],
+                "confidence": float(confidence) if confidence is not None else None,
+                "edge_rank_score": float(edge_rank_score) if edge_rank_score is not None else None,
             }
         )
     return out
@@ -758,16 +805,78 @@ def _hydrate_nodes(
     return [{"id": r[0], "label": r[1], "type": r[2]} for r in rows]
 
 
+def _hydrate_bill_citations_from_ids(
+    *,
+    postgres: Any,
+    bill_citation_ids: list[str],
+) -> list[dict[str, Any]]:
+    if not bill_citation_ids:
+        return []
+
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for cid in bill_citation_ids:
+        if cid in seen:
+            continue
+        seen.add(cid)
+
+        parts = cid.split(":")
+        if len(parts) != 3 or parts[0] != "bill":
+            continue
+        bill_id = parts[1]
+        try:
+            chunk_index = int(parts[2])
+        except Exception:
+            continue
+
+        rows = postgres.execute_query(
+            """
+            SELECT b.id, b.bill_number, b.title, be.text, be.source_url, be.chunk_index, be.page_number
+            FROM bill_excerpts be
+            JOIN bills b ON b.id = be.bill_id
+            WHERE be.bill_id = %s AND be.chunk_index = %s
+            LIMIT 1
+            """,
+            (bill_id, chunk_index),
+        )
+        if not rows:
+            continue
+
+        row = rows[0]
+        page_number = int(row[6]) if row[6] is not None else None
+        source_url = _url_with_page_fragment(str(row[4] or ""), page_number)
+        out.append(
+            {
+                "citation_id": cid,
+                "bill_id": str(row[0] or ""),
+                "bill_number": row[1] or "",
+                "bill_title": row[2] or "",
+                "excerpt": row[3] or "",
+                "source_url": source_url,
+                "chunk_index": int(row[5] or 0),
+                "page_number": page_number,
+                "matched_terms": [],
+                "score": 1.0,
+            }
+        )
+    return out
+
+
 def _hydrate_citations(
     *,
     postgres: Any,
-    utterance_ids: list[str],
+    evidence_ids: list[str],
     max_citations: int,
 ) -> list[dict[str, Any]]:
-    if not utterance_ids:
+    if not evidence_ids:
         return []
-    utterance_ids = utterance_ids[:max_citations]
-    placeholders = ",".join(["%s"] * len(utterance_ids))
+
+    transcript_ids = [eid for eid in evidence_ids if not str(eid).startswith("bill:")]
+    transcript_ids = transcript_ids[:max_citations]
+    if not transcript_ids:
+        return []
+
+    placeholders = ",".join(["%s"] * len(transcript_ids))
     rows = postgres.execute_query(
         f"""
         SELECT s.id, s.text, s.seconds_since_start, s.timestamp_str,
@@ -800,7 +909,7 @@ def _hydrate_citations(
         LEFT JOIN speakers sp ON s.speaker_id = sp.id
         WHERE s.id IN ({placeholders})
         """,
-        tuple(utterance_ids),
+        tuple(transcript_ids),
     )
 
     order_paper_idx = _load_order_paper_speaker_index(postgres=postgres)
@@ -1009,11 +1118,15 @@ def kg_hybrid_graph_rag(
         e["target_label"] = target.get("label")
         e["target_type"] = target.get("type")
 
-    utterance_ids: list[str] = []
+    evidence_ids: list[str] = []
+    bill_evidence_ids: list[str] = []
     for e in edges:
-        for uid in e.get("utterance_ids", []) or []:
-            if uid not in utterance_ids:
-                utterance_ids.append(uid)
+        edge_evidence_ids = e.get("evidence_ids") or e.get("utterance_ids") or []
+        for evidence_id in edge_evidence_ids:
+            if evidence_id not in evidence_ids:
+                evidence_ids.append(evidence_id)
+            if str(evidence_id).startswith("bill:") and evidence_id not in bill_evidence_ids:
+                bill_evidence_ids.append(evidence_id)
 
     edges_filtered: int = 0
     edge_rank_filter_skipped_no_scores = False
@@ -1035,8 +1148,12 @@ def kg_hybrid_graph_rag(
 
     citations = _hydrate_citations(
         postgres=postgres,
-        utterance_ids=utterance_ids,
+        evidence_ids=evidence_ids,
         max_citations=max_citations,
+    )
+    bill_citations_from_edges = _hydrate_bill_citations_from_ids(
+        postgres=postgres,
+        bill_citation_ids=bill_evidence_ids,
     )
 
     debug_info: dict[str, Any] = {
@@ -1060,6 +1177,7 @@ def kg_hybrid_graph_rag(
         "nodes": nodes,
         "edges": edges,
         "citations": citations,
+        "bill_citations_from_edges": bill_citations_from_edges,
         "debug": debug_info,
     }
 
@@ -1230,6 +1348,16 @@ def kg_hybrid_graph_rag_with_bills(
         max_bill_citations=max_bill_citations,
         query_embedding=query_embedding,
     )
+
+    for edge_citation in result.get("bill_citations_from_edges", []):
+        cid = str(edge_citation.get("citation_id") or "")
+        if not cid:
+            continue
+        exists = any(str(c.get("citation_id") or "") == cid for c in bill_citations)
+        if not exists:
+            bill_citations.append(edge_citation)
+
+    bill_citations = bill_citations[:max_bill_citations]
 
     result["bill_citations"] = bill_citations
     result["debug"]["bill_citation_count"] = len(bill_citations)
