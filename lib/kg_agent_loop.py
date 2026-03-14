@@ -99,7 +99,7 @@ def _augment_query_with_speakers(
         """
         SELECT full_name, normalized_name
         FROM speakers
-        WHERE %s LIKE '%' || normalized_name || '%'
+        WHERE %s LIKE CONCAT('%%', normalized_name, '%%')
         ORDER BY length(normalized_name) DESC
         LIMIT %s
         """,
