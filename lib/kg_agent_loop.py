@@ -135,6 +135,23 @@ def _augment_query_with_speakers(
     return f"{base} {' '.join(additions)}".strip()
 
 
+def _augment_query_with_recency(*, query: str, user_message: str) -> str:
+    base = (query or "").strip()
+    if not base:
+        return base
+
+    message_lower = (user_message or "").lower()
+    recency_tokens = {"recent", "recently", "latest", "current", "new"}
+    if not any(token in message_lower for token in recency_tokens):
+        return base
+
+    if re.search(r"\b(19|20)\d{2}\b", base):
+        return base
+
+    current_year = datetime.now().year
+    return f"{base} {current_year}".strip()
+
+
 def _truncate_text(text: str, max_len: int = 300) -> str:
     """Truncate text to max_len with ellipsis."""
     if not text or len(text) <= max_len:
@@ -847,9 +864,13 @@ class KGAgentLoop:
                             "searching", "Finding relevant debates (graph + citations)..."
                         )
                     base_query = str(fc.args.get("query", ""))
+                    recency_query = _augment_query_with_recency(
+                        query=base_query,
+                        user_message=user_message,
+                    )
                     resolved_query = _augment_query_with_speakers(
                         postgres=self.postgres,
-                        query=base_query,
+                        query=recency_query,
                         user_message=user_message,
                     )
                     tool_result = kg_hybrid_graph_rag(

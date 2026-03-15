@@ -107,6 +107,19 @@ def test_augment_query_with_speakers_appends_name() -> None:
     assert "Tamaisha Eytle Harvey" in augmented
 
 
+def test_augment_query_with_recency_adds_current_year() -> None:
+    from datetime import datetime
+
+    from lib.kg_agent_loop import _augment_query_with_recency
+
+    query = "Future Barbados"
+    user_message = "What has been talked about recently with Future Barbados?"
+
+    augmented = _augment_query_with_recency(query=query, user_message=user_message)
+
+    assert str(datetime.now().year) in augmented
+
+
 def test_agent_loop_runs_tool_then_answers():
     from lib.kg_agent_loop import KGAgentLoop
 
