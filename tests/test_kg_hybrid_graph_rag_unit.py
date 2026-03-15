@@ -167,7 +167,7 @@ class _FakeEmbedding:
 
 class _FakePostgresPhraseMatch(_FakePostgres):
     def execute_query(self, sql: str, params: tuple[Any, ...] | None = None):
-        if "plainto_tsquery" in sql and params:
+        if "websearch_to_tsquery" in sql and params:
             query = params[0]
             if query == "future barbados":
                 return [

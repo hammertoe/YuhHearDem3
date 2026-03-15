@@ -596,9 +596,9 @@ def _retrieve_seed_nodes(
     # Full-text search on label+aliases (kg_nodes.tsv trigger)
     rows = postgres.execute_query(
         """
-        SELECT id, type, label, aliases, ts_rank(tsv, plainto_tsquery('english', %s)) as rank
+        SELECT id, type, label, aliases, ts_rank(tsv, websearch_to_tsquery('english', %s)) as rank
         FROM kg_nodes
-        WHERE tsv @@ plainto_tsquery('english', %s)
+        WHERE tsv @@ websearch_to_tsquery('english', %s)
         ORDER BY rank DESC
         LIMIT %s
         """,
@@ -623,9 +623,9 @@ def _retrieve_seed_nodes(
         if phrase_query and phrase_query != query:
             rows = postgres.execute_query(
                 """
-                SELECT id, type, label, aliases, ts_rank(tsv, plainto_tsquery('english', %s)) as rank
+                SELECT id, type, label, aliases, ts_rank(tsv, websearch_to_tsquery('english', %s)) as rank
                 FROM kg_nodes
-                WHERE tsv @@ plainto_tsquery('english', %s)
+                WHERE tsv @@ websearch_to_tsquery('english', %s)
                 ORDER BY rank DESC
                 LIMIT %s
                 """,
