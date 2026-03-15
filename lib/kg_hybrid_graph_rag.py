@@ -617,6 +617,33 @@ def _retrieve_seed_nodes(
             }
         )
 
+    query_terms = _query_terms(query)
+    if len(query_terms) >= 2:
+        phrase_query = " ".join(query_terms[:2])
+        if phrase_query and phrase_query != query:
+            rows = postgres.execute_query(
+                """
+                SELECT id, type, label, aliases, ts_rank(tsv, plainto_tsquery('english', %s)) as rank
+                FROM kg_nodes
+                WHERE tsv @@ plainto_tsquery('english', %s)
+                ORDER BY rank DESC
+                LIMIT %s
+                """,
+                (phrase_query, phrase_query, seed_k * 2),
+            )
+            for row in rows:
+                rank = float(row[4] or 0.0)
+                fulltext_candidates.append(
+                    {
+                        "id": row[0],
+                        "type": row[1],
+                        "label": row[2],
+                        "aliases": row[3] or [],
+                        "score": rank,
+                        "match_reason": "fulltext_phrase",
+                    }
+                )
+
     # Alias exact match (cheap + good for proper nouns)
     try:
         from lib.id_generators import normalize_label

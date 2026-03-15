@@ -165,6 +165,28 @@ class _FakeEmbedding:
         return [0.0] * 768
 
 
+class _FakePostgresPhraseMatch(_FakePostgres):
+    def execute_query(self, sql: str, params: tuple[Any, ...] | None = None):
+        if "plainto_tsquery" in sql and params:
+            query = params[0]
+            if query == "future barbados":
+                return [
+                    (
+                        "kg_future",
+                        "schema:Organization",
+                        "Future Barbados",
+                        ["Future Barbados"],
+                        0.8,
+                    )
+                ]
+            return []
+
+        if "FROM kg_nodes" in sql and "WHERE id IN" in sql:
+            return [("kg_future", "Future Barbados", "schema:Organization")]
+
+        return super().execute_query(sql, params)
+
+
 class _FakePostgresNameMatch(_FakePostgres):
     def execute_query(self, sql: str, params: tuple[Any, ...] | None = None):
         if "FROM kg_nodes" in sql and "embedding <=>" in sql:
@@ -268,6 +290,26 @@ def test_kg_hybrid_graph_rag_prefers_name_substring_matches() -> None:
     seed_labels = {s["label"] for s in out["seeds"]}
     assert "Tamaisha Eytle Harvey" in seed_labels
     assert "Tameisha Rochester" not in seed_labels
+
+
+def test_kg_hybrid_graph_rag_adds_phrase_fulltext_candidates() -> None:
+    from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag
+
+    postgres = _FakePostgresPhraseMatch()
+    embedding = _FakeEmbedding()
+
+    out = kg_hybrid_graph_rag(
+        postgres=postgres,
+        embedding_client=embedding,
+        query="Future Barbados recent 2026 budget debates",
+        hops=1,
+        seed_k=5,
+        max_edges=10,
+        max_citations=5,
+    )
+
+    seed_labels = {s["label"] for s in out["seeds"]}
+    assert "Future Barbados" in seed_labels
 
 
 def test_kg_hybrid_graph_rag_respects_bill_citation_limit() -> None:
