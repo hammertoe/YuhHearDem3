@@ -23,11 +23,16 @@ from lib.utils.config import config
 class BillScraper:
     """Scrapes bills from parliamentary websites."""
 
+    ITEMS_PER_PAGE = 30
+
     def __init__(self):
         self.base_url = "https://www.barbadosparliament.com"
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": config.scraping.user_agent})
         self.rate_limit_delay = config.scraping.rate_limit_delay
+        self._viewstate: str | None = None
+        self._viewstategenerator: str | None = None
+        self._eventvalidation: str | None = None
 
     @retry(
         stop=stop_after_attempt(5),
@@ -45,35 +50,105 @@ class BillScraper:
 
         return response.text
 
-    def discover_bills(self) -> list[str]:
-        """Discover bill URLs from the parliament website."""
-        try:
-            html = self.fetch_page(self.base_url + "/bills/search")
-            soup = BeautifulSoup(html, "html.parser")
+    def _extract_viewstate(self, html: str) -> None:
+        """Extract ASP.NET ViewState fields from HTML for pagination."""
+        soup = BeautifulSoup(html, "html.parser")
 
-            bill_links = []
+        viewstate = soup.select_one("input#__VIEWSTATE")
+        if viewstate:
+            self._viewstate = str(viewstate.get("value", ""))
 
-            for link in soup.find_all("a", href=True):
-                href = link.get("href", "")
-                if self._is_bill_url(href):
-                    full_url = self._resolve_url(href)
-                    bill_links.append(full_url)
+        viewstategenerator = soup.select_one("input#__VIEWSTATEGENERATORID")
+        if viewstategenerator:
+            self._viewstategenerator = str(viewstategenerator.get("value", ""))
 
-            print(f"Discovered {len(bill_links)} bill URLs")
-            return bill_links
+        eventvalidation = soup.select_one("input#__EVENTVALIDATION")
+        if eventvalidation:
+            self._eventvalidation = str(eventvalidation.get("value", ""))
 
-        except Exception as e:
-            print(f"⚠️ Error discovering bills: {e}")
-            return []
+    def _fetch_with_pagination(self, page_offset: int, bill_type: int = 1) -> str:
+        """Fetch a paginated page using POST requests."""
+        if page_offset == 0:
+            url = f"{self.base_url}/bills/search/id/{bill_type}"
+            return self.fetch_page(url)
+
+        url = f"{self.base_url}/bills/search/id/{bill_type}"
+        html = self.fetch_page(url)
+        self._extract_viewstate(html)
+
+        soup = BeautifulSoup(html, "html.parser")
+        hidden_fields = {}
+        for hidden in soup.find_all("input", type="hidden"):
+            name = hidden.get("name", "")
+            value = hidden.get("value", "")
+            if name:
+                hidden_fields[name] = value
+
+        post_url = f"{self.base_url}/bills/search/id/{bill_type}"
+        data = {
+            "__VIEWSTATE": hidden_fields.get("__VIEWSTATE", ""),
+            "__VIEWSTATEGENERATOR": hidden_fields.get("__VIEWSTATEGENERATOR", ""),
+            "__EVENTVALIDATION": hidden_fields.get("__EVENTVALIDATION", ""),
+            "__EVENTTARGET": "",
+            "__EVENTARGUMENT": f"Page${page_offset // self.ITEMS_PER_PAGE + 1}",
+            "__LASTFOCUS": "",
+            "ctl00$ContentPlaceHolder1$txtSearch": "",
+            "ctl00$ContentPlaceHolder1$ddlSort": "",
+            "ctl00$ContentPlaceHolder1$btnSearch": "Search",
+        }
+
+        self.session.headers.update({"Referer": url})
+
+        print(f"Fetching page at offset {page_offset} via POST...")
+        response = self.session.post(post_url, data=data, timeout=30)
+        response.raise_for_status()
+
+        time.sleep(self.rate_limit_delay)
+
+        return response.text
+
+    def discover_bills(self, bill_type: int = 1) -> list[str]:
+        """Discover bill URLs by iterating through possible IDs."""
+        print("Discovering bills by iterating through IDs...")
+        bill_links = []
+
+        start_id, end_id = 1, 1500
+
+        def check_bill(bill_id):
+            url = f"{self.base_url}/bills/details/{bill_id}"
+            try:
+                response = self.session.get(url, timeout=10, allow_redirects=True)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, "html.parser")
+                    h2 = soup.find("h2")
+                    if h2:
+                        text = h2.get_text(strip=True)
+                        if text and len(text) > 5 and "PHP Error" not in text:
+                            return url
+            except requests.RequestException:
+                pass
+            return None
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(check_bill, i): i for i in range(start_id, end_id + 1)}
+            for i, future in enumerate(as_completed(futures)):
+                result = future.result()
+                if result:
+                    bill_links.append(result)
+                if (i + 1) % 100 == 0:
+                    print(f"  Checked {i + 1} IDs, found {len(bill_links)} bills...")
+
+        print(f"Discovered {len(bill_links)} total bill URLs (type={bill_type})")
+        return bill_links
 
     def _is_bill_url(self, url: str) -> bool:
-        """Check if URL appears to be a bill page."""
+        """Check if URL appears to be a bill detail page."""
         url_lower = url.lower()
-        if url_lower.startswith("/bill/") or url_lower.startswith("/bills/"):
+        if "/bills/details/" in url_lower:
             return True
-        if "/bill/" in url_lower or "/bills/" in url_lower:
-            return True
-        if re.search(r"/cap-\d+\b", url_lower):
+        if re.search(r"/bills/details/\d+", url_lower):
             return True
         return False
 
@@ -279,7 +354,7 @@ class BillScraper:
 
         pdf_link = soup.select_one("a[href$='.pdf']")
         if pdf_link:
-            href = pdf_link.get("href", "")
+            href = str(pdf_link.get("href", ""))
             if href and not href.startswith("http"):
                 href = self.base_url + href
             if href:
@@ -287,18 +362,25 @@ class BillScraper:
 
         return {}
 
-    def scrape_all_bills(self, max_bills: int | None = None) -> list[dict[str, Any]]:
+    def scrape_all_bills(
+        self, max_bills: int | None = None, bill_type: int = 1
+    ) -> list[dict[str, Any]]:
         """Scrape all discovered bills."""
-        bill_urls = self.discover_bills()
+        bill_type_name = "bills" if bill_type == 1 else "resolutions"
+        print(f"\n{'=' * 40}")
+        print(f"Scraping {bill_type_name} (type={bill_type})")
+        print(f"{'=' * 40}")
+
+        bill_urls = self.discover_bills(bill_type)
 
         if not bill_urls:
-            print("❌ No bills discovered")
+            print(f"❌ No {bill_type_name} discovered")
             return []
 
         if max_bills:
             bill_urls = bill_urls[:max_bills]
 
-        print(f"Scraping {len(bill_urls)} bills...")
+        print(f"Scraping {len(bill_urls)} {bill_type_name}...")
 
         bills = []
         for i, url in enumerate(bill_urls, 1):
@@ -307,14 +389,30 @@ class BillScraper:
             bill_data = self.scrape_bill(url)
 
             if bill_data:
+                bill_data["legislation_type"] = bill_type_name.rstrip("s")
                 bills.append(bill_data)
 
             if max_bills and len(bills) >= max_bills:
                 print(f"\n✅ Reached max bills limit: {max_bills}")
                 break
 
-        print(f"\n✅ Successfully scraped {len(bills)} bills")
+        print(f"\n✅ Successfully scraped {len(bills)} {bill_type_name}")
         return bills
+
+    def scrape_all(
+        self, max_bills: int | None = None, include_resolutions: bool = True
+    ) -> list[dict[str, Any]]:
+        """Scrape both bills and optionally resolutions."""
+        all_bills = []
+
+        bills = self.scrape_all_bills(max_bills=max_bills, bill_type=1)
+        all_bills.extend(bills)
+
+        if include_resolutions:
+            resolutions = self.scrape_all_bills(max_bills=max_bills, bill_type=2)
+            all_bills.extend(resolutions)
+
+        return all_bills
 
 
 def main():
@@ -335,6 +433,12 @@ def main():
         default="https://www.barbadosparliament.com",
         help="Base URL for bill discovery",
     )
+    parser.add_argument(
+        "--type",
+        choices=["bills", "resolutions", "both"],
+        default="both",
+        help="Type of legislation to scrape (default: both)",
+    )
 
     args = parser.parse_args()
 
@@ -342,12 +446,19 @@ def main():
     print("Bill Scraper - Phase 2: Bill Scraping Pipeline")
     print("=" * 80)
     print(f"Source URL: {args.source_url}")
+    print(f"Type: {args.type}")
     print(f"Max Bills: {args.max_bills or 'All'}")
     print(f"Output File: {args.output_file}")
     print("=" * 80)
 
     scraper = BillScraper()
-    bills = scraper.scrape_all_bills(max_bills=args.max_bills)
+
+    if args.type == "bills":
+        bills = scraper.scrape_all_bills(max_bills=args.max_bills, bill_type=1)
+    elif args.type == "resolutions":
+        bills = scraper.scrape_all_bills(max_bills=args.max_bills, bill_type=2)
+    else:
+        bills = scraper.scrape_all(max_bills=args.max_bills, include_resolutions=True)
 
     import json
 
