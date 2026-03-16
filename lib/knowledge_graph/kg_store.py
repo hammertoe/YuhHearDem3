@@ -20,9 +20,11 @@ def canonicalize_and_store(
     postgres: PostgresClient,
     embedding: GoogleEmbeddingClient,
     results: list[tuple[Window, list[dict[str, Any]], list[dict[str, Any]], str, bool, str | None]],
-    youtube_video_id: str,
+    youtube_video_id: str | None,
     kg_run_id: str,
     extractor_model: str,
+    source_kind: str = "transcript",
+    source_ref_id: str | None = None,
 ) -> dict[str, Any]:
     """Canonicalize nodes and edges and store them in Postgres.
 
@@ -30,13 +32,22 @@ def canonicalize_and_store(
         postgres: Postgres client for database operations
         embedding: Google embedding client for generating embeddings
         results: List of (window, nodes_new, edges, raw_response, parse_success, error)
-        youtube_video_id: YouTube video ID
+        youtube_video_id: YouTube video ID (transcript source)
         kg_run_id: Unique ID for this extraction run
         extractor_model: Name of the LLM model used
+        source_kind: Provenance source kind (transcript or bill)
+        source_ref_id: Source reference ID (video id or bill id)
 
     Returns:
         Dictionary with statistics about the operation
     """
+
+    if source_kind not in {"transcript", "bill"}:
+        raise ValueError(f"Invalid source_kind: {source_kind}")
+
+    resolved_source_ref_id = source_ref_id or youtube_video_id
+    if not resolved_source_ref_id:
+        raise ValueError("source_ref_id is required when youtube_video_id is not provided")
 
     def _normalize_speaker_ref(ref: str, window_speaker_ids: list[str]) -> str | None:
         ref = (ref or "").strip()
@@ -193,11 +204,11 @@ def canonicalize_and_store(
             ):
                 stats["links_to_known"] += 1
 
-            utterance_ids = edge.get("utterance_ids", [])
+            evidence_ids = edge.get("utterance_ids", [])
             earliest_timestamp_str = None
             earliest_seconds = None
 
-            for uid in utterance_ids:
+            for uid in evidence_ids:
                 if uid in utterance_timestamps:
                     ts_str, ts_seconds = utterance_timestamps[uid]
                     if earliest_seconds is None or ts_seconds < earliest_seconds:
@@ -208,10 +219,13 @@ def canonicalize_and_store(
                 source_id,
                 edge["predicate"],
                 target_id,
-                youtube_video_id,
+                resolved_source_ref_id,
                 earliest_seconds or window.earliest_seconds or 0,
                 edge["evidence"],
             )
+
+            legacy_video_id = resolved_source_ref_id if source_kind == "transcript" else None
+            legacy_utterance_ids = evidence_ids if source_kind == "transcript" else None
 
             edges_data.append(
                 (
@@ -219,10 +233,13 @@ def canonicalize_and_store(
                     source_id,
                     edge["predicate"],
                     target_id,
-                    youtube_video_id,
+                    source_kind,
+                    resolved_source_ref_id,
+                    legacy_video_id,
                     earliest_timestamp_str or window.earliest_timestamp,
                     earliest_seconds or window.earliest_seconds,
-                    utterance_ids,
+                    evidence_ids,
+                    legacy_utterance_ids,
                     edge["evidence"],
                     window.speaker_ids,
                     float(edge.get("confidence", 0.5)),
@@ -276,11 +293,12 @@ def canonicalize_and_store(
 
         edge_query = """
             INSERT INTO kg_edges (
-                id, source_id, predicate, target_id, youtube_video_id,
-                earliest_timestamp_str, earliest_seconds, utterance_ids,
+                id, source_id, predicate, target_id,
+                source_kind, source_ref_id, youtube_video_id,
+                earliest_timestamp_str, earliest_seconds, evidence_ids, utterance_ids,
                 evidence, speaker_ids, confidence, extractor_model, kg_run_id
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO NOTHING
         """
         if filtered_edges:

@@ -320,9 +320,12 @@ CREATE TABLE IF NOT EXISTS kg_edges (
     predicate TEXT NOT NULL,
     predicate_raw TEXT,
     target_id TEXT NOT NULL,
-    youtube_video_id TEXT NOT NULL,
+    source_kind TEXT NOT NULL DEFAULT 'transcript' CHECK (source_kind IN ('transcript', 'bill')),
+    source_ref_id TEXT NOT NULL,
+    youtube_video_id TEXT,
     earliest_timestamp_str TEXT,
     earliest_seconds INTEGER,
+    evidence_ids TEXT[] NOT NULL DEFAULT '{}',
     utterance_ids TEXT[],
     evidence TEXT,
     speaker_ids TEXT[],
@@ -468,10 +471,12 @@ CREATE INDEX IF NOT EXISTS idx_kg_aliases_type ON kg_aliases(type);
 CREATE INDEX IF NOT EXISTS idx_kg_aliases_source ON kg_aliases(source);
 
 CREATE INDEX IF NOT EXISTS idx_kg_edges_video_time ON kg_edges(youtube_video_id, earliest_seconds);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_source_kind_ref ON kg_edges(source_kind, source_ref_id);
 CREATE INDEX IF NOT EXISTS idx_kg_edges_triple ON kg_edges(source_id, predicate, target_id);
 CREATE INDEX IF NOT EXISTS idx_kg_edges_source_id ON kg_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_kg_edges_target_id ON kg_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_kg_edges_run_id ON kg_edges(kg_run_id);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_evidence_ids ON kg_edges USING gin (evidence_ids);
 
 -- ============================================================================
 -- TRIGGERS: Auto-update tsv columns
@@ -605,9 +610,12 @@ SELECT
     e.id AS edge_id,
     e.predicate,
     e.predicate_raw,
+    e.source_kind,
+    e.source_ref_id,
     e.youtube_video_id,
     e.earliest_timestamp_str,
     e.earliest_seconds,
+    e.evidence_ids,
     e.utterance_ids,
     e.evidence,
     e.speaker_ids,

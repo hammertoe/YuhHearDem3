@@ -453,9 +453,12 @@ Extract entities and relationships from the transcript window above. Return JSON
                         source_id,
                         edge.predicate,
                         target_id,
+                        "transcript",
+                        youtube_video_id,
                         youtube_video_id,
                         edge.earliest_timestamp,
                         edge.earliest_seconds,
+                        edge.utterance_ids,
                         edge.utterance_ids,
                         edge.evidence,
                         result.window.speaker_ids,
@@ -512,11 +515,12 @@ Extract entities and relationships from the transcript window above. Return JSON
 
             edge_query = """
                 INSERT INTO kg_edges (
-                    id, source_id, predicate, target_id, youtube_video_id,
-                    earliest_timestamp_str, earliest_seconds, utterance_ids,
+                    id, source_id, predicate, target_id,
+                    source_kind, source_ref_id, youtube_video_id,
+                    earliest_timestamp_str, earliest_seconds, evidence_ids, utterance_ids,
                     evidence, speaker_ids, confidence, extractor_model, kg_run_id
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING
             """
             if filtered_edges:
