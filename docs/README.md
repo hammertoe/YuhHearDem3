@@ -27,6 +27,12 @@ A comprehensive parliamentary transcription and search system that processes vid
 - **Follow-Up Suggestions**: Generates contextual follow-up questions
 - **Full Citation Tracing**: Every answer grounded in transcript evidence
 
+### Frontend UI
+
+- **React + Vite**: Single-page app served from `frontend/dist`
+- **Streaming Chat**: SSE-based progress updates
+- **Graph View**: Explore entity connections visually
+
 ### Search System
 
 - **Hybrid Search**: Combines vector similarity, BM25 full-text, and graph traversal
@@ -55,6 +61,8 @@ A comprehensive parliamentary transcription and search system that processes vid
 │                                             └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+The frontend is served by FastAPI from `frontend/dist` and talks to the same API origin.
 
 ## Quick Start
 
@@ -94,6 +102,12 @@ python transcribe.py --order-file order.txt --segment-minutes 30
 python scripts/kg_extract_from_video.py --youtube-video-id "VIDEO_ID"
 ```
 
+### Ingest Transcript JSON
+
+```bash
+python scripts/ingest_transcript_json.py --transcript-file transcription_output.json --youtube-video-id "VIDEO_ID"
+```
+
 ### Start Chat API
 
 ```bash
@@ -111,6 +125,7 @@ YuhHearDem3/
 │   ├── kg_agent_loop.py           # KG-powered agent loop
 │   ├── kg_hybrid_graph_rag.py     # Hybrid Graph-RAG retrieval
 │   ├── advanced_search_features.py # Temporal search, trends, graph queries
+│   ├── embeddings/                # Embedding clients
 │   ├── knowledge_graph/
 │   │   ├── oss_two_pass.py       # OSS two-pass extraction
 │   │   ├── window_builder.py      # Window-based processing
@@ -127,6 +142,7 @@ YuhHearDem3/
 │   ├── cron_transcription.py      # Automated transcription
 │   ├── migrate_chat_schema.py     # Chat schema migration
 │   └── clear_kg.py                # Clear KG tables
+├── frontend/                       # React frontend (Vite)
 ├── tests/                          # Unit tests
 └── docs/                           # Documentation
 ```
@@ -139,6 +155,8 @@ YuhHearDem3/
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Command quick reference |
 | [CHAT_TRACE.md](CHAT_TRACE.md) | Debug tracing documentation |
 | [DATE_NORMALIZATION.md](DATE_NORMALIZATION.md) | Date handling |
+| [CODE_MAP_AND_REVIEW.md](CODE_MAP_AND_REVIEW.md) | Code map and flow diagram |
+| [README_SEARCH_SYSTEM.md](README_SEARCH_SYSTEM.md) | Search system details |
 
 ## Technology Stack
 

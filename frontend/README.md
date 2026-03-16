@@ -4,11 +4,11 @@ React + TypeScript frontend for the parliamentary search system.
 
 ## Features
 
-- **Hybrid Search**: Vector + BM25 search with re-ranking
-- **Temporal Search**: Filter by date range, speaker, entity type
-- **Video Player**: Embedded YouTube player with timestamp navigation
-- **Speaker Profiles**: View speaker statistics and contributions
-- **Responsive Design**: Mobile-friendly interface
+- **Streaming Chat**: SSE progress updates during response generation
+- **Citations**: Source cards with timestamps and speaker attribution
+- **Bill Excerpts**: Inline excerpts when grounded in bill text
+- **Follow-up Prompts**: Suggested next questions after each response
+- **Responsive Design**: Mobile-friendly layout
 
 ## Tech Stack
 
@@ -16,82 +16,57 @@ React + TypeScript frontend for the parliamentary search system.
 - **TypeScript 5.4** - Type safety
 - **Vite 5.2** - Build tool and dev server
 - **Tailwind CSS 3.4** - Styling
-- **vis-network 9.1** - Graph visualization
-- **react-player 2.16** - YouTube video player
-- **axios 1.6** - HTTP client
+- **react-markdown 10** - Markdown rendering
+- **remark-gfm 4** - GitHub-flavored markdown
 
 ## Getting Started
 
-\`\`\`bash
+```bash
 cd frontend
 npm install
 npm run dev
-\`\`\`
+```
 
-The app will be available at \`<http://localhost:3000\`>
+The app will be available at `http://localhost:3000`. During development, `/chat` requests are
+proxied to the backend at `http://localhost:8000` via `vite.config.ts`.
 
 ## Project Structure
 
-\`\`\`
+```
 src/
-├── components/       # Reusable UI components
-│   ├── SearchFilters.tsx
-│   ├── SearchResultItem.tsx
-│   └── VideoPlayer.tsx
-├── pages/           # Main pages
-│   ├── SearchPage.tsx
-│   ├── SpeakerPage.tsx
-│   └── GraphPage.tsx
-├── services/        # API communication
-│   └── api.ts
-├── types/           # TypeScript type definitions
-│   └── index.ts
-├── utils/           # Helper functions
-├── App.tsx          # Root component
-└── main.tsx         # Entry point
-\`\`\`
+├── App.tsx           # Root component
+├── api.ts            # Chat API helpers
+├── index.css         # Tailwind styles
+├── main.tsx          # Entry point
+├── sourceGrouping.ts # Group citations by document
+└── timeFormat.ts     # Timestamp formatting helpers
+```
 
 ## API Endpoints
 
-The frontend expects the following backend API endpoints:
+The frontend currently calls these backend endpoints:
 
-- \`POST /api/search\` - Hybrid search (vector + BM25 + re-ranking)
-- \`POST /api/search/temporal\` - Temporal search with filters
-- \`GET /api/search/trends\` - Trend analysis for entities
-- \`GET /api/speakers\` - List all speakers
-- \`GET /api/speakers/:id\` - Get speaker stats
+- `POST /chat/threads` - Create a thread
+- `POST /chat/threads/:id/messages` - Send message to a thread
+- `GET /chat/threads/:id/messages/stream` - Stream response via SSE
+
+Note: the UI attempts to restore a saved thread by calling `GET /chat/threads/:id`, but the
+backend does not currently expose that endpoint.
 
 ## Features
 
-### Search Page
+### Chat Experience
 
-- Free-text search with filters
-- Date range filtering
-- Speaker filtering
-- Entity type filtering
-- Click result to open video player at timestamp
-
-### Video Player
-
-- Embedded YouTube player
-- Jump to specific timestamp
-- Close button to return to results
-- Display jump confirmation
-
-### Speaker Profiles
-
-- List all speakers with stats
-- Click speaker to see details
-- Recent contributions
-- Total appearances
-- First seen date
-- Role and position information
+- Prompt suggestions and examples
+- Streaming progress stages
+- Markdown rendering with citations
+- Source grouping by document
 
 ## Design Patterns
 
 - **Component Composition**: Reusable components with props interfaces
 - **State Management**: React hooks (useState, useEffect)
-- **API Communication**: Axios with TypeScript types
+- **API Communication**: Fetch + TypeScript types
 - **Error Handling**: Try-catch with user feedback
 - **Loading States**: Skeleton screens and loading indicators
 - **Responsive Design**: Tailwind responsive utilities

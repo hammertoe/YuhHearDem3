@@ -24,6 +24,9 @@ python transcribe.py --order-file order.txt --max-segments 2
 # Extract KG from video
 python scripts/kg_extract_from_video.py --youtube-video-id "VIDEO_ID"
 
+# Extract KG from bill excerpts
+python scripts/kg_extract_from_bills.py --max-bills 10
+
 # With custom window parameters
 python scripts/kg_extract_from_video.py --youtube-video-id "VIDEO_ID" --window-size 15 --stride 10
 
@@ -71,6 +74,12 @@ python scripts/migrate_chat_schema.py
 
 # Backfill speaker roles
 python scripts/backfill_speaker_video_roles.py
+
+# Ingest transcript JSON into Postgres
+python scripts/ingest_transcript_json.py --transcript-file transcription_output.json --youtube-video-id "VIDEO_ID"
+
+# Ingest bills into Postgres
+python scripts/ingest_bills.py --scrape
 ```
 
 ### Order Papers
@@ -111,14 +120,16 @@ mypy lib/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/search` | Hybrid search |
-| POST | `/chat` | Conversational AI |
-| GET | `/chat/threads` | List threads |
-| POST | `/chat/threads` | Create thread |
-| GET | `/chat/threads/{id}` | Get thread |
-| POST | `/chat/threads/{id}` | Send message |
-| GET | `/graph` | Graph data |
+| POST | `/search/temporal` | Search with date/speaker/entity filters |
+| GET | `/search/trends` | Trend analysis for entities |
 | GET | `/speakers` | List speakers |
-| GET | `/speakers/{id}` | Speaker details |
+| GET | `/speakers/{speaker_id}` | Speaker details |
+| GET | `/videos/{youtube_video_id}/speakers/{speaker_id}/roles` | Speaker roles for a video |
+| POST | `/chat/threads` | Create thread |
+| POST | `/chat/threads/{thread_id}/messages` | Send message |
+| GET | `/chat/threads/{thread_id}/messages/stream` | Stream message response |
+| GET | `/health` | Health check |
+| GET | `/api` | API metadata |
 
 ## Environment Variables
 
@@ -156,10 +167,13 @@ mypy lib/
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--order-file | Path` | Required to order file |
+| `--order-paper-id` | None | Order paper ID from database |
 | `--segment-minutes` | 30 | Segment duration |
+| `--overlap-minutes` | 1 | Segment overlap |
 | `--start-minutes` | 0 | Start position |
 | `--max-segments` | None | Limit segments |
 | `--output-file` | Varies | Output file path |
+| `--video` | None | YouTube ID/URL or gs:// URI |
 
 ### kg_extract_from_video.py
 

@@ -137,14 +137,23 @@ LIMIT 50;
 }
 ```
 
-### POST /chat
+### POST /search/temporal
 
 ```json
 {
-  "thread_id": "uuid",
-  "message": "What did they say about healthcare?"
+  "query": "healthcare reform",
+  "limit": 20,
+  "alpha": 0.6,
+  "start_date": "2024-01-01",
+  "end_date": "2024-12-31",
+  "speaker_id": "s_john_doe_1",
+  "entity_type": "schema:Legislation"
 }
 ```
+
+### GET /search/trends
+
+Query params: `entity_id`, `days`, `window_size`
 
 ## Performance
 

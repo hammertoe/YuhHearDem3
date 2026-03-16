@@ -26,6 +26,78 @@ YuhHearDem3 is a parliamentary transcription and knowledge graph system that pro
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Code Flow Diagram (Mermaid)
+
+```mermaid
+flowchart LR
+  subgraph Sources
+    YT[YouTube or GCS video]
+    OPDF[Order paper PDF]
+    BillsSite[Parliament bills site]
+  end
+
+  subgraph Transcription
+    Transcribe[transcribe.py]
+    JSONOut[transcription_output.json]
+  end
+
+  subgraph TranscriptIngest
+    IngestScript[scripts/ingest_transcript_json.py]
+    Ingestor[lib/transcripts/ingestor.py]
+  end
+
+  subgraph OrderPapers
+    OPIngest[scripts/ingest_order_paper_pdf.py]
+    OPParser[lib/order_papers/*.py]
+  end
+
+  subgraph Bills
+    BillIngest[scripts/ingest_bills.py]
+    BillScraper[lib/scraping/bill_scraper.py]
+    BillProcessor[lib/processors/bill_ingestor.py]
+  end
+
+  subgraph KGExtraction
+    KGVideo[scripts/kg_extract_from_video.py]
+    KGBills[scripts/kg_extract_from_bills.py]
+    WindowBuilder[lib/knowledge_graph/window_builder.py]
+    BillWindowBuilder[lib/knowledge_graph/bill_window_builder.py]
+    Extractor[lib/knowledge_graph/oss_kg_extractor.py + kg_extractor.py]
+    KGStore[lib/knowledge_graph/kg_store.py]
+  end
+
+  subgraph Storage[(PostgreSQL + pgvector)]
+    Tables[Transcript + search + KG tables]
+  end
+
+  subgraph SearchAPI
+    API[api/search_api.py]
+    ChatAgent[lib/chat_agent_v2.py]
+    AgentLoop[lib/kg_agent_loop.py]
+    HybridRAG[lib/kg_hybrid_graph_rag.py]
+    AdvSearch[lib/advanced_search_features.py]
+  end
+
+  subgraph Frontend
+    UI[frontend/src (Vite + React)]
+  end
+
+  YT --> Transcribe --> JSONOut --> IngestScript --> Ingestor --> Tables
+  OPDF --> OPIngest --> OPParser --> Tables
+  BillsSite --> BillIngest --> BillScraper --> BillProcessor --> Tables
+
+  Tables --> WindowBuilder --> KGVideo
+  Tables --> BillWindowBuilder --> KGBills
+  KGVideo --> Extractor --> KGStore --> Tables
+  KGBills --> Extractor --> KGStore
+
+  Tables --> API
+  API --> ChatAgent --> AgentLoop --> HybridRAG --> Tables
+  API --> AdvSearch --> Tables
+  UI --> API
+  API --> UI
+```
+
 ## Code Map
 
 ### Entry Points
@@ -50,12 +122,15 @@ YuhHearDem3 is a parliamentary transcription and knowledge graph system that pro
 
 | File | Lines | Purpose |
 |------|-------|---------|
+| `oss_kg_extractor.py` | ~800 | OSS KG extraction (two-pass) |
 | `oss_two_pass.py` | 677 | OSS two-pass entity extraction |
 | `window_builder.py` | 287 | Window-based processing for transcripts |
+| `bill_window_builder.py` | ~200 | Bill excerpt window construction |
 | `kg_store.py` | ~350 | KG storage operations |
 | `kg_extractor.py` | ~550 | Main KG extraction logic |
 | `base_kg_seeder.py` | ~300 | Base KG seeding |
 | `model_compare.py` | ~300 | Model comparison utilities |
+| `window_benchmark.py` | ~160 | Window performance benchmarks |
 
 #### Order Papers (`lib/order_papers/`)
 
@@ -73,6 +148,12 @@ YuhHearDem3 is a parliamentary transcription and knowledge graph system that pro
 | File | Lines | Purpose |
 |------|-------|---------|
 | `ingestor.py` | 433 | Transcript ingestion |
+
+#### Embeddings (`lib/embeddings/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `google_client.py` | ~200 | Embedding generation client |
 
 #### Database (`lib/db/`)
 
@@ -101,18 +182,26 @@ YuhHearDem3 is a parliamentary transcription and knowledge graph system that pro
 | File | Lines | Purpose |
 |------|-------|---------|
 | `config.py` | 85 | Configuration management |
-| `roles.py` | ~50 | Role utilities |
+
+#### Utilities (`lib/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
 | `id_generators.py` | ~100 | ID generation utilities |
+| `roles.py` | ~120 | Speaker role normalization utilities |
 
 ### Scripts (`scripts/`)
 
 | File | Purpose |
 |------|---------|
 | `kg_extract_from_video.py` | Extract KG from video |
+| `kg_extract_from_bills.py` | Extract KG from bill excerpts |
 | `cron_transcription.py` | Automated transcription jobs |
 | `migrate_chat_schema.py` | Chat schema migration |
 | `clear_kg.py` | Clear KG tables |
 | `ingest_order_paper_pdf.py` | Ingest order paper PDFs |
+| `ingest_transcript_json.py` | Ingest transcript JSON into Postgres |
+| `ingest_bills.py` | Scrape/process bills and ingest |
 | `ingest_knowledge_graph.py` | Ingest KG data |
 | `list_channel_videos.py` | List channel videos |
 | `match_order_papers_to_videos.py` | Match papers to videos |

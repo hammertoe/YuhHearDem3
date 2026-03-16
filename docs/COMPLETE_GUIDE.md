@@ -33,6 +33,8 @@ A hybrid vector/graph search and conversational AI system for Barbados Parliamen
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+The frontend is served by FastAPI from `frontend/dist` and talks to the same API origin.
+
 ---
 
 ## Core Modules
@@ -109,12 +111,26 @@ CHAT_TRACE=1 python -m uvicorn api.search_api:app --reload
 
 ```
 Video URL → yt-dlp metadata → Gemini API → Segment transcription → Speaker normalization → JSON output
+JSON output → scripts/ingest_transcript_json.py → Transcript tables (videos/paragraphs/sentences/entities)
+```
+
+### Order Paper Flow
+
+```
+Order paper PDF → scripts/ingest_order_paper_pdf.py → order_papers/order_paper_items → context + role seeding
+```
+
+### Bill Ingestion Flow
+
+```
+Bill site → scripts/ingest_bills.py → bills + bill_excerpts (embeddings)
 ```
 
 ### Knowledge Graph Flow
 
 ```
 Transcript → Window Builder (30 utterances, stride 18) → LLM extraction → Canonicalization → KG Store → PostgreSQL
+Bill excerpts → BillWindowBuilder → LLM extraction → Canonicalization → KG Store → PostgreSQL
 ```
 
 ### Chat Flow
@@ -155,14 +171,16 @@ User Query → Embedding → Vector Search → Graph Expansion → LLM Synthesis
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/search` | Hybrid search (vector + graph + BM25) |
-| POST | `/chat` | Conversational AI with citations |
-| GET | `/chat/threads` | List chat threads |
-| POST | `/chat/threads` | Create new thread |
-| GET | `/chat/threads/{id}` | Get thread messages |
-| POST | `/chat/threads/{id}` | Add message to thread |
-| GET | `/graph` | Graph data for entity |
+| POST | `/search/temporal` | Search with date/speaker/entity filters |
+| GET | `/search/trends` | Trend analysis for entities |
 | GET | `/speakers` | List all speakers |
-| GET | `/speakers/{id}` | Speaker details |
+| GET | `/speakers/{speaker_id}` | Speaker details |
+| GET | `/videos/{youtube_video_id}/speakers/{speaker_id}/roles` | Speaker roles for a video |
+| POST | `/chat/threads` | Create new thread |
+| POST | `/chat/threads/{thread_id}/messages` | Add message to thread |
+| GET | `/chat/threads/{thread_id}/messages/stream` | Stream message response (SSE) |
+| GET | `/health` | Health check |
+| GET | `/api` | API metadata |
 
 ---
 
@@ -171,11 +189,14 @@ User Query → Embedding → Vector Search → Graph Expansion → LLM Synthesis
 | Script | Purpose |
 |--------|---------|
 | `transcribe.py` | Main video transcription |
+| `scripts/ingest_transcript_json.py` | Ingest transcript JSON into Postgres |
 | `scripts/kg_extract_from_video.py` | Extract KG from video |
+| `scripts/kg_extract_from_bills.py` | Extract KG from bill excerpts |
 | `scripts/cron_transcription.py` | Automated transcription jobs |
 | `scripts/migrate_chat_schema.py` | Chat schema migration |
 | `scripts/clear_kg.py` | Clear KG tables |
 | `scripts/ingest_order_paper_pdf.py` | Ingest order paper PDFs |
+| `scripts/ingest_bills.py` | Scrape/process bills and ingest |
 | `scripts/list_channel_videos.py` | List channel videos |
 
 ---
@@ -195,9 +216,12 @@ User Query → Embedding → Vector Search → Graph Expansion → LLM Synthesis
 **transcribe.py:**
 
 - `--order-file`: Path to order paper file
+- `--order-paper-id`: Order paper ID from database
 - `--segment-minutes`: Segment duration (default: 30)
+- `--overlap-minutes`: Segment overlap (default: 1)
 - `--start-minutes`: Start position (default: 0)
 - `--max-segments`: Limit segments processed
+- `--video`: YouTube ID/URL or gs:// URI
 
 **kg_extract_from_video.py:**
 
