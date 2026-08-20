@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import uuid
@@ -8,8 +9,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import Any
 
-from google import genai
-from google.genai import types
+from lib.llm.cerebras_client import CerebrasClient, LLMResponse
 
 from lib.id_generators import normalize_label
 from lib.kg_hybrid_graph_rag import kg_hybrid_graph_rag_with_bills as kg_hybrid_graph_rag
@@ -159,7 +159,7 @@ def _truncate_text(text: str, max_len: int = 300) -> str:
     return text[: max_len - 3] + "..."
 
 
-def _format_content_part_summary(part: types.Part) -> dict[str, Any]:
+def _format_content_part_summary(part: Any) -> dict[str, Any]:
     """Format a content part for trace logging."""
     if part.text:
         return {"type": "text", "preview": _truncate_text(part.text, 300)}
@@ -175,7 +175,7 @@ def _format_content_part_summary(part: types.Part) -> dict[str, Any]:
     return {"type": "unknown"}
 
 
-def _format_contents_summary(contents: list[types.Content]) -> list[dict[str, Any]]:
+def _format_contents_summary(contents: list[Any]) -> list[dict[str, Any]]:
     """Format contents list for trace logging."""
     if not contents:
         return []
@@ -187,7 +187,7 @@ def _format_contents_summary(contents: list[types.Content]) -> list[dict[str, An
     return result
 
 
-def _serialize_content_part(part: types.Part) -> dict[str, Any]:
+def _serialize_content_part(part: Any) -> dict[str, Any]:
     """Serialize a content part to dict for raw logging."""
     if part.text:
         return {"type": "text", "content": part.text}
@@ -207,7 +207,7 @@ def _serialize_content_part(part: types.Part) -> dict[str, Any]:
     return {"type": "unknown"}
 
 
-def _serialize_contents(contents: list[types.Content]) -> list[dict[str, Any]]:
+def _serialize_contents(contents: list[Any]) -> list[dict[str, Any]]:
     """Serialize contents list for raw logging."""
     if not contents:
         return []
@@ -253,6 +253,59 @@ AGENT_RESPONSE_SCHEMA: dict[str, Any] = {
     },
     "required": ["answer", "cite_utterance_ids", "focus_node_ids"],
 }
+
+
+@dataclass
+class _GeminiStyleFunctionCall:
+    name: str
+    args: dict[str, Any]
+
+
+@dataclass
+class _GeminiStylePart:
+    text: str | None = None
+    function_call: _GeminiStyleFunctionCall | None = None
+
+
+@dataclass
+class _GeminiStyleContent:
+    role: str
+    parts: list[_GeminiStylePart]
+
+
+@dataclass
+class _GeminiStyleCandidate:
+    content: _GeminiStyleContent | None
+
+
+class _CerebrasAdapter:
+    """Wraps a Cerebras `LLMResponse` so the agent loop can read Gemini-style attrs.
+
+    Exposes:
+      - `.text` — final assistant text (tool-call responses have text=None)
+      - `.candidates[0].content` — content parts with optional `function_call`
+      - `.function_calls` — list of function calls (Gemini style)
+    """
+
+    def __init__(self, llm_response: LLMResponse):
+        self.text = llm_response.text
+        self.function_calls: list[_GeminiStyleFunctionCall] = [
+            _GeminiStyleFunctionCall(name=tc.name, args=tc.arguments)
+            for tc in llm_response.tool_calls
+        ]
+        content: _GeminiStyleContent | None = None
+        if llm_response.text or llm_response.tool_calls:
+            parts: list[_GeminiStylePart] = []
+            if llm_response.text:
+                parts.append(_GeminiStylePart(text=llm_response.text))
+            for tc in llm_response.tool_calls:
+                parts.append(
+                    _GeminiStylePart(
+                        function_call=_GeminiStyleFunctionCall(name=tc.name, args=tc.arguments)
+                    )
+                )
+            content = _GeminiStyleContent(role="assistant", parts=parts)
+        self.candidates = [_GeminiStyleCandidate(content=content)]
 
 
 def _parse_json_best_effort(text: str | None) -> dict[str, Any] | None:
@@ -619,27 +672,32 @@ class KGAgentLoop:
         postgres: Any,
         embedding_client: Any,
         client: Any | None = None,
-        model: str = "gemini-3-flash-preview",
+        model: str | None = None,
         max_tool_iterations: int = 4,
         enable_thinking: bool = False,
         progress_callback: Any | None = None,
-    ) -> None:
+    ):
         self.postgres = postgres
         self.embedding_client = embedding_client
-        self.model = model
         self.max_tool_iterations = max_tool_iterations
         self.enable_thinking = enable_thinking
         self.progress_callback = progress_callback
 
+        # Provider abstraction: if a client is injected we use it as-is (could be
+        # Gemini for backward compat). Otherwise we default to Cerebras.
         if client is not None:
             self.client = client
+            self.use_cerebras = isinstance(client, CerebrasClient)
+            # When injecting an external client, model comes from config or default.
+            self.model = model or self._default_model()
         else:
-            import os
+            self.client = CerebrasClient()
+            self.use_cerebras = True
+            self.model = model or self.client.model
 
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY environment variable is not set")
-            self.client = genai.Client(api_key=api_key)
+    @staticmethod
+    def _default_model() -> str:
+        return os.getenv("LLM_MODEL", "gemma-3-27b-it")
 
     def _system_prompt(self) -> str:
         today = datetime.now().date().isoformat()
@@ -676,7 +734,15 @@ class KGAgentLoop:
             "- Return JSON only matching the response schema."
         )
 
-    def _tool_declarations(self) -> list[types.Tool]:
+    def _tool_declarations(self) -> list[Any]:
+        """Return tool declarations in the format expected by the active LLM client."""
+        if self.use_cerebras:
+            return self._openai_tools()
+        return self._gemini_tools()
+
+    def _gemini_tools(self) -> list[Any]:
+        from google.genai import types  # type: ignore[import-untyped]
+
         tool_schema = {
             "type": "object",
             "properties": {
@@ -702,10 +768,47 @@ class KGAgentLoop:
         )
         return [types.Tool(function_declarations=[fd])]
 
-    def _messages_to_contents(
+    def _openai_tools(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "kg_hybrid_graph_rag",
+                    "description": (
+                        "Hybrid Graph-RAG: vector/fulltext seed search over kg_nodes, then expand kg_edges N hops "
+                        "and return a compact subgraph plus provenance citations with youtube timecoded URLs. "
+                        "Also retrieves bill excerpt citations for legislation questions. "
+                        "Use edge_rank_threshold to filter low-quality edges (recommended: 0.001 or omit for no filtering)."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "hops": {"type": "integer", "default": 1},
+                            "seed_k": {"type": "integer", "default": 12},
+                            "max_edges": {"type": "integer", "default": 90},
+                            "max_citations": {"type": "integer", "default": 12},
+                            "max_bill_citations": {"type": "integer", "default": 8},
+                            "edge_rank_threshold": {"type": "number"},
+                        },
+                        "required": ["query"],
+                    },
+                },
+            }
+        ]
+
+    def _messages_to_contents(self, history: list[dict[str, str]], user_message: str) -> list[Any]:
+        """Build the LLM input payload in the format expected by the active client."""
+        if self.use_cerebras:
+            return self._history_to_openai_messages(history, user_message)
+        return self._history_to_gemini_contents(history, user_message)
+
+    def _history_to_gemini_contents(
         self, history: list[dict[str, str]], user_message: str
-    ) -> list[types.Content]:
-        contents: list[types.Content] = []
+    ) -> list[Any]:
+        from google.genai import types  # type: ignore[import-untyped]
+
+        contents: list[Any] = []
         for msg in history:
             role = msg.get("role")
             content = msg.get("content") or ""
@@ -718,6 +821,52 @@ class KGAgentLoop:
 
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_message)]))
         return contents
+
+    def _history_to_openai_messages(
+        self, history: list[dict[str, str]], user_message: str
+    ) -> list[dict[str, Any]]:
+        """Build OpenAI-style chat messages.
+
+        System prompt is injected into the messages list as the first item.
+        """
+        messages: list[dict[str, Any]] = [{"role": "system", "content": self._system_prompt()}]
+        for msg in history:
+            role = msg.get("role")
+            content = msg.get("content") or ""
+            if not content:
+                continue
+            openai_role = "user" if role == "user" else "assistant"
+            messages.append({"role": openai_role, "content": content})
+        messages.append({"role": "user", "content": user_message})
+        return messages
+
+    def _append_tool_result(
+        self,
+        *,
+        fc: Any,
+        tool_result: Any,
+        result_parts: list[Any],
+        tool_messages: list[dict[str, Any]],
+    ) -> None:
+        """Append a tool result in whichever format the active client expects."""
+        if self.use_cerebras:
+            tool_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": getattr(fc, "id", None) or "",
+                    "name": fc.name,
+                    "content": json.dumps(tool_result, default=str),
+                }
+            )
+            return
+        from google.genai import types  # type: ignore[import-untyped]
+
+        result_parts.append(
+            types.Part.from_function_response(
+                name=fc.name,
+                response=tool_result,
+            )
+        )
 
     def _extract_function_calls(self, response: Any) -> list[_ToolCall]:
         fcs = getattr(response, "function_calls", None)
@@ -732,7 +881,15 @@ class KGAgentLoop:
             out.append(_ToolCall(name=str(name), args=dict(args or {})))
         return out
 
-    async def _call_llm(self, contents: list[types.Content], is_tool_call: bool) -> Any:
+    async def _call_llm(self, contents: list[Any], is_tool_call: bool) -> Any:
+        """Dispatch to the active client. Returns the raw response object."""
+        if self.use_cerebras:
+            return await self._call_cerebras_llm(contents, is_tool_call)
+        return await self._call_gemini_llm(contents, is_tool_call)
+
+    async def _call_gemini_llm(self, contents: list[Any], is_tool_call: bool) -> Any:
+        from google.genai import types  # type: ignore[import-untyped]
+
         config_params: dict[str, Any] = {
             "system_instruction": self._system_prompt(),
             "temperature": 0.2,
@@ -753,6 +910,32 @@ class KGAgentLoop:
             contents=contents,
             config=config,
         )
+
+    async def _call_cerebras_llm(self, messages: list[dict[str, Any]], is_tool_call: bool) -> Any:
+        """Call Cerebras and return an LLMResponse wrapped to look like a Gemini response."""
+        temperature = 0.2
+        max_tokens = 512 if is_tool_call else 2048
+        tools = self._openai_tools() if is_tool_call else None
+
+        response_format: dict[str, Any] | None = None
+        if not is_tool_call:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_response",
+                    "schema": AGENT_RESPONSE_SCHEMA,
+                },
+            }
+
+        llm_response = await self.client.achat(
+            messages,
+            tools=tools,
+            tool_choice="auto" if is_tool_call else None,
+            response_format=response_format,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return _CerebrasAdapter(llm_response)
 
     async def run(self, *, user_message: str, history: list[dict[str, str]]) -> dict[str, Any]:
         trace_id = str(uuid.uuid4())[:8]
@@ -813,7 +996,7 @@ class KGAgentLoop:
             _trace_section_start(trace_id, f"PARSING LLM RESPONSE (iteration {iterations})")
 
             candidates = getattr(response, "candidates", None)
-            if candidates:
+            if candidates and not self.use_cerebras:
                 cand0 = candidates[0]
                 model_content = getattr(cand0, "content", None)
                 if model_content is not None:
@@ -844,7 +1027,8 @@ class KGAgentLoop:
                 break
 
             _trace_section_start(trace_id, f"EXECUTING TOOLS (iteration {iterations})")
-            result_parts: list[types.Part] = []
+            result_parts: list[Any] = []
+            tool_messages: list[dict[str, Any]] = []
             for fc in function_calls:
                 if fc.name == "kg_hybrid_graph_rag":
                     threshold_raw = fc.args.get("edge_rank_threshold")
@@ -899,11 +1083,11 @@ class KGAgentLoop:
                             _format_tool_result_summary(tool_result),
                         )
 
-                    result_parts.append(
-                        types.Part.from_function_response(
-                            name=fc.name,
-                            response=tool_result,
-                        )
+                    self._append_tool_result(
+                        fc=fc,
+                        tool_result=tool_result,
+                        result_parts=result_parts,
+                        tool_messages=tool_messages,
                     )
                 else:
                     _trace_print(
@@ -911,14 +1095,38 @@ class KGAgentLoop:
                         "Tool Error",
                         f"unknown tool: {fc.name}",
                     )
-                    result_parts.append(
-                        types.Part.from_function_response(
-                            name=fc.name,
-                            response={"error": f"unknown tool: {fc.name}"},
-                        )
+                    self._append_tool_result(
+                        fc=fc,
+                        tool_result={"error": f"unknown tool: {fc.name}"},
+                        result_parts=result_parts,
+                        tool_messages=tool_messages,
                     )
 
-            contents.append(types.Content(role="user", parts=result_parts))
+            if self.use_cerebras:
+                # In OpenAI format we need to append the assistant tool-call message
+                # first, then each tool result message.
+                contents.append(
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": getattr(fc, "id", None) or f"call_{i}",
+                                "type": "function",
+                                "function": {
+                                    "name": fc.name,
+                                    "arguments": json.dumps(fc.args, default=str),
+                                },
+                            }
+                            for i, fc in enumerate(function_calls)
+                        ],
+                    }
+                )
+                contents.extend(tool_messages)
+            else:
+                from google.genai import types  # type: ignore[import-untyped]
+
+                contents.append(types.Content(role="user", parts=result_parts))
             if _should_trace() and result_parts:
                 _trace_print(
                     trace_id,

@@ -21,7 +21,7 @@ from lib.advanced_search_features import AdvancedSearchFeatures
 from lib.chat_agent_v2 import KGChatAgentV2
 from lib.db.chat_schema import ensure_chat_schema
 from lib.db.postgres_client import PostgresClient
-from lib.embeddings.google_client import GoogleEmbeddingClient
+from lib.llm.cerebras_client import CerebrasClient
 from lib.utils.config import config
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ def _get_postgres() -> PostgresClient:
     return postgres
 
 
-def _get_embedding_client() -> GoogleEmbeddingClient:
+def _get_embedding_client():
     assert embedding_client is not None
     return embedding_client
 
@@ -90,6 +90,27 @@ def _get_chat_agent() -> KGChatAgentV2:
     return chat_agent
 
 
+def _build_embedding_client():
+    """Pick the embedding client based on config.embedding.provider."""
+    provider = (config.embedding.provider or "local_bge").strip().lower()
+    if provider == "local_bge":
+        from lib.embeddings.bge_local_client import LocalBGEEmbeddingClient
+
+        return LocalBGEEmbeddingClient(
+            model_name=config.embedding.local_model_name or None,
+            dimensions=config.embedding.dimensions or None,
+            batch_size=config.embedding.batch_size or None,
+            cache_dir=config.embedding.local_cache_dir or None,
+        )
+    if provider in {"google_ai", "vertex_ai"}:
+        from lib.embeddings.google_client import GoogleEmbeddingClient
+
+        return GoogleEmbeddingClient()
+    raise ValueError(
+        f"Unknown EMBEDDING_PROVIDER={provider!r}; use local_bge, google_ai, or vertex_ai"
+    )
+
+
 @app.on_event("startup")
 def _startup() -> None:
     global postgres, embedding_client, advanced_search, chat_agent
@@ -99,15 +120,17 @@ def _startup() -> None:
     except Exception as e:
         print(f"❌ Failed to ensure chat schema: {e}")
         raise
-    embedding_client = GoogleEmbeddingClient()
+    embedding_client = _build_embedding_client()
     advanced_search = AdvancedSearchFeatures(
         postgres=postgres,
         embedding_client=embedding_client,
     )
+    cerebras_client = CerebrasClient(model=config.llm.model)
     chat_agent = KGChatAgentV2(
         postgres_client=postgres,
         embedding_client=embedding_client,
-        model=getattr(config, "gemini_model", "gemini-2.5-flash"),
+        client=cerebras_client,
+        model=config.llm.model,
         enable_thinking=getattr(config, "enable_thinking", False),
     )
 
@@ -277,7 +300,7 @@ class ChatMessageResponse(BaseModel):
 
 
 postgres: PostgresClient | None = None
-embedding_client: GoogleEmbeddingClient | None = None
+embedding_client: Any = None
 advanced_search: AdvancedSearchFeatures | None = None
 chat_agent: KGChatAgentV2 | None = None
 
@@ -888,11 +911,35 @@ async def stream_message(request: Request, thread_id: str, content: str):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint for deployment monitoring with dependency validation."""
-    health_status = {"status": "ok", "timestamp": datetime.now().isoformat(), "checks": {}}
+    """Liveness probe — fast, no external dependencies.
+
+    Returns instantly so nginx and Docker health checks never time out,
+    even when downstream LLM/embedding providers are degraded.
+    """
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness probe — validates database and downstream clients.
+
+    Each check is bounded by a short timeout so a slow/hung dependency
+    cannot cause this endpoint to block.
+    """
+    health_status = {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "checks": {},
+    }
 
     try:
-        _get_postgres().execute_query("SELECT 1")
+        await asyncio.wait_for(
+            asyncio.to_thread(_get_postgres().execute_query, "SELECT 1"),
+            timeout=2.0,
+        )
         health_status["checks"]["database"] = "ok"
     except Exception as e:
         health_status["status"] = "degraded"
@@ -900,7 +947,10 @@ async def health():
 
     try:
         if embedding_client:
-            _get_embedding_client().generate_query_embedding("test")
+            await asyncio.wait_for(
+                asyncio.to_thread(_get_embedding_client().generate_query_embedding, "test"),
+                timeout=5.0,
+            )
             health_status["checks"]["embeddings"] = "ok"
         else:
             health_status["checks"]["embeddings"] = "skipped"

@@ -23,18 +23,23 @@ class DatabaseConfig:
 class EmbeddingConfig:
     """Embedding configuration."""
 
-    # Provider: "google_ai" (AI Studio) or "vertex_ai" (Vertex AI).
-    provider: str = os.getenv("EMBEDDING_PROVIDER", "google_ai")
+    # Provider: "local_bge" (sentence-transformers), "google_ai" (AI Studio),
+    # or "vertex_ai" (Vertex AI).
+    provider: str = os.getenv("EMBEDDING_PROVIDER", "local_bge")
 
-    # AI Studio key
+    # AI Studio key (kept for the dormant GoogleEmbeddingClient used by KG extraction scripts)
     api_key: str = os.getenv("GOOGLE_API_KEY", "")
 
     # Vertex AI settings (requires ADC credentials or service account)
     vertex_project: str = os.getenv("VERTEX_PROJECT", "")
     vertex_location: str = os.getenv("VERTEX_LOCATION", "")
 
+    # Local model (sentence-transformers identifier). Defaults to BGE-base-en-v1.5 (768d).
+    local_model_name: str = os.getenv("LOCAL_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+    local_cache_dir: str = os.getenv("LOCAL_EMBEDDING_CACHE_DIR", "")
+
     # google-genai model ids change over time; text-embedding-004 was a common default,
-    # but availability depends on your project/key.
+    # but availability depends on your project/key. (Dormant when provider=local_bge.)
     model: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
     dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
     batch_size: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))
@@ -83,6 +88,21 @@ class APIConfig:
 
 
 @dataclass
+class LLMConfig:
+    """LLM configuration for chat/inference.
+
+    Default provider is Cerebras with the gemma-3-27b-it model.
+    """
+
+    provider: str = os.getenv("LLM_PROVIDER", "cerebras")
+    model: str = os.getenv("LLM_MODEL", "gemma-3-27b-it")
+    cerebras_api_key: str = os.getenv("CEREBRAS_API_KEY", "")
+    temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
+    max_tokens_tool_call: int = int(os.getenv("LLM_MAX_TOKENS_TOOL_CALL", "512"))
+    max_tokens_answer: int = int(os.getenv("LLM_MAX_TOKENS_ANSWER", "2048"))
+
+
+@dataclass
 class AppConfig:
     """Application configuration."""
 
@@ -92,6 +112,7 @@ class AppConfig:
     scraping: ScrapingConfig = field(default_factory=ScrapingConfig)
     retry: RetryConfig = field(default_factory=RetryConfig)
     api: APIConfig = field(default_factory=APIConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     chat_trace: bool = os.getenv("CHAT_TRACE", "").lower() in {"1", "true", "on"}
     enable_thinking: bool = os.getenv("ENABLE_THINKING", "").lower() in {
