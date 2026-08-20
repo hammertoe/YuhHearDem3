@@ -259,6 +259,7 @@ AGENT_RESPONSE_SCHEMA: dict[str, Any] = {
 class _GeminiStyleFunctionCall:
     name: str
     args: dict[str, Any]
+    id: str | None = None
 
 
 @dataclass
@@ -290,7 +291,7 @@ class _CerebrasAdapter:
     def __init__(self, llm_response: LLMResponse):
         self.text = llm_response.text
         self.function_calls: list[_GeminiStyleFunctionCall] = [
-            _GeminiStyleFunctionCall(name=tc.name, args=tc.arguments)
+            _GeminiStyleFunctionCall(name=tc.name, args=tc.arguments, id=tc.id)
             for tc in llm_response.tool_calls
         ]
         content: _GeminiStyleContent | None = None
@@ -301,7 +302,9 @@ class _CerebrasAdapter:
             for tc in llm_response.tool_calls:
                 parts.append(
                     _GeminiStylePart(
-                        function_call=_GeminiStyleFunctionCall(name=tc.name, args=tc.arguments)
+                        function_call=_GeminiStyleFunctionCall(
+                            name=tc.name, args=tc.arguments, id=tc.id
+                        )
                     )
                 )
             content = _GeminiStyleContent(role="assistant", parts=parts)

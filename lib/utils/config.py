@@ -91,11 +91,11 @@ class APIConfig:
 class LLMConfig:
     """LLM configuration for chat/inference.
 
-    Default provider is Cerebras with the gemma-3-27b-it model.
+    Default provider is Cerebras with the gemma-4-31b model.
     """
 
     provider: str = os.getenv("LLM_PROVIDER", "cerebras")
-    model: str = os.getenv("LLM_MODEL", "gemma-3-27b-it")
+    model: str = os.getenv("LLM_MODEL", "gemma-4-31b")
     cerebras_api_key: str = os.getenv("CEREBRAS_API_KEY", "")
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
     max_tokens_tool_call: int = int(os.getenv("LLM_MAX_TOKENS_TOOL_CALL", "512"))
