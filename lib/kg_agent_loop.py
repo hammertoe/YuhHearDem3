@@ -323,9 +323,26 @@ def _parse_json_best_effort(text: str | None) -> dict[str, Any] | None:
         raw = raw[:-3]
     raw = raw.strip()
     try:
-        return json.loads(raw)
+        result = json.loads(raw)
     except Exception:
         return None
+    return result if isinstance(result, dict) else None
+
+
+def _coerce_parsed_to_dict(parsed: Any, *, fallback_text: str | None) -> dict[str, Any]:
+    """Ensure the parsed JSON is a dict. Wraps string/number responses."""
+    if isinstance(parsed, dict):
+        return parsed
+    return {
+        "answer": (
+            fallback_text
+            if isinstance(fallback_text, str) and fallback_text
+            else "I couldn't generate an answer."
+        ),
+        "cite_utterance_ids": [],
+        "focus_node_ids": [],
+        "followup_questions": [],
+    }
 
 
 _LEADING_INTERJECTION_RE = re.compile(r"^(wuh\s*-?\s*loss)[\s,!.:-]+", re.IGNORECASE)
@@ -1231,13 +1248,16 @@ class KGAgentLoop:
 
         _trace_section_start(trace_id, "FINAL ANSWER PARSING")
         parsed = _parse_json_best_effort(getattr(response, "text", None))
+        response_text = getattr(response, "text", None)
         if not parsed:
             parsed = {
-                "answer": getattr(response, "text", None) or "I couldn't generate an answer.",
+                "answer": response_text or "I couldn't generate an answer.",
                 "cite_utterance_ids": [],
                 "focus_node_ids": [],
                 "followup_questions": [],
             }
+
+        parsed = _coerce_parsed_to_dict(parsed, fallback_text=response_text)
 
         parsed.setdefault("cite_utterance_ids", [])
         parsed.setdefault("focus_node_ids", [])

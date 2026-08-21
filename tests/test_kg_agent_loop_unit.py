@@ -604,3 +604,37 @@ def test_infer_citation_ids_from_src_links_keeps_known_bill_citations() -> None:
     )
 
     assert inferred == ["bill:water_bill:12"]
+
+
+def test_parse_json_best_effort_returns_dict_only() -> None:
+    from lib.kg_agent_loop import _parse_json_best_effort
+
+    assert _parse_json_best_effort('{"answer": "x"}') == {"answer": "x"}
+    assert _parse_json_best_effort('["a", "b"]') is None
+    assert _parse_json_best_effort('"plain string"') is None
+    assert _parse_json_best_effort("not json") is None
+    assert _parse_json_best_effort("") is None
+    assert _parse_json_best_effort(None) is None
+
+
+def test_coerce_parsed_to_dict_wraps_strings() -> None:
+    from lib.kg_agent_loop import _coerce_parsed_to_dict
+
+    coerced = _coerce_parsed_to_dict("the answer", fallback_text="the answer")
+    assert coerced == {
+        "answer": "the answer",
+        "cite_utterance_ids": [],
+        "focus_node_ids": [],
+        "followup_questions": [],
+    }
+
+    unchanged = _coerce_parsed_to_dict(
+        {
+            "answer": "ok",
+            "cite_utterance_ids": ["a"],
+            "focus_node_ids": [],
+            "followup_questions": [],
+        },
+        fallback_text=None,
+    )
+    assert unchanged["answer"] == "ok"
