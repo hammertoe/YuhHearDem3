@@ -76,8 +76,11 @@ def _update_embeddings(
     params: list = []
     for vid, vec in zip(ids, vectors):
         params.extend([vid, vector_literal(vec)])
+    set_clause = "SET embedding = v.emb"
+    if table in {"entities", "bill_excerpts", "kg_nodes"}:
+        set_clause += ", updated_at = NOW()"
     sql = (
-        f"UPDATE {table} SET embedding = v.emb, updated_at = NOW() "
+        f"UPDATE {table} {set_clause} "
         f"FROM (VALUES {values_sql}) AS v(id, emb) "
         f"WHERE {table}.{id_column} = v.id"
     )
