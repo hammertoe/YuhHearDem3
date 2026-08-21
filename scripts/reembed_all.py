@@ -81,9 +81,8 @@ def _update_embeddings(
         f"FROM (VALUES {values_sql}) AS v(id, emb) "
         f"WHERE {table}.{id_column} = v.id"
     )
-    with pg.connection.cursor() as cur:
+    with pg.get_cursor() as cur:
         cur.execute(sql, params)
-        pg.connection.commit()
 
 
 def reembed_table(
