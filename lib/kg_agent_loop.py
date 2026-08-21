@@ -966,15 +966,12 @@ class KGAgentLoop:
         max_tokens = 512 if is_tool_call else 2048
         tools = self._openai_tools() if is_tool_call else None
 
+        # Cerebras's strict json_schema response_format pushes gemma-4-31b to
+        # return just the bare schema (e.g. "{}") instead of a real answer.
+        # Let the model output JSON naturally via prompt instructions instead.
         response_format: dict[str, Any] | None = None
         if not is_tool_call:
-            response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "agent_response",
-                    "schema": AGENT_RESPONSE_SCHEMA,
-                },
-            }
+            messages = self._inject_final_answer_format_hint(messages)
 
         llm_response = await self.client.achat(
             messages,
@@ -985,6 +982,23 @@ class KGAgentLoop:
             max_tokens=max_tokens,
         )
         return _CerebrasAdapter(llm_response)
+
+    @staticmethod
+    def _inject_final_answer_format_hint(
+        messages: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Append a final user nudge reminding the model to return the schema."""
+        hint = (
+            "Return your final answer as JSON only, no prose or markdown fences. "
+            "Match this exact shape:\n"
+            '{"answer": "...", "cite_utterance_ids": ["..."], '
+            '"focus_node_ids": ["..."], "followup_questions": ["..."]}\n'
+            "Use empty arrays when nothing applies. No text outside the JSON."
+        )
+        return [
+            *messages,
+            {"role": "user", "content": hint},
+        ]
 
     async def run(self, *, user_message: str, history: list[dict[str, str]]) -> dict[str, Any]:
         trace_id = str(uuid.uuid4())[:8]
