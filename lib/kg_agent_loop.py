@@ -850,13 +850,14 @@ class KGAgentLoop:
         tool_result: Any,
         result_parts: list[Any],
         tool_messages: list[dict[str, Any]],
+        fallback_index: int = 0,
     ) -> None:
         """Append a tool result in whichever format the active client expects."""
         if self.use_cerebras:
             tool_messages.append(
                 {
                     "role": "tool",
-                    "tool_call_id": getattr(fc, "id", None) or "",
+                    "tool_call_id": self._tool_call_id(fc, fallback_index),
                     "name": fc.name,
                     "content": json.dumps(tool_result, default=str),
                 }
@@ -870,6 +871,13 @@ class KGAgentLoop:
                 response=tool_result,
             )
         )
+
+    def _tool_call_id(self, fc: Any, fallback_index: int) -> str:
+        """Return the id for a tool call, falling back to a synthetic id."""
+        existing = getattr(fc, "id", None)
+        if existing:
+            return str(existing)
+        return f"call_{fallback_index}"
 
     def _extract_function_calls(self, response: Any) -> list[_ToolCall]:
         fcs = getattr(response, "function_calls", None)
@@ -1032,7 +1040,7 @@ class KGAgentLoop:
             _trace_section_start(trace_id, f"EXECUTING TOOLS (iteration {iterations})")
             result_parts: list[Any] = []
             tool_messages: list[dict[str, Any]] = []
-            for fc in function_calls:
+            for fc_idx, fc in enumerate(function_calls):
                 if fc.name == "kg_hybrid_graph_rag":
                     threshold_raw = fc.args.get("edge_rank_threshold")
                     threshold_value: float | None = None
@@ -1091,6 +1099,7 @@ class KGAgentLoop:
                         tool_result=tool_result,
                         result_parts=result_parts,
                         tool_messages=tool_messages,
+                        fallback_index=fc_idx,
                     )
                 else:
                     _trace_print(
@@ -1103,6 +1112,7 @@ class KGAgentLoop:
                         tool_result={"error": f"unknown tool: {fc.name}"},
                         result_parts=result_parts,
                         tool_messages=tool_messages,
+                        fallback_index=fc_idx,
                     )
 
             if self.use_cerebras:
@@ -1114,7 +1124,7 @@ class KGAgentLoop:
                         "content": None,
                         "tool_calls": [
                             {
-                                "id": getattr(fc, "id", None) or f"call_{i}",
+                                "id": self._tool_call_id(fc, i),
                                 "type": "function",
                                 "function": {
                                     "name": fc.name,
