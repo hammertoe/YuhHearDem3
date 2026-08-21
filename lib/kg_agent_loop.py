@@ -161,18 +161,37 @@ def _truncate_text(text: str, max_len: int = 300) -> str:
 
 def _format_content_part_summary(part: Any) -> dict[str, Any]:
     """Format a content part for trace logging."""
-    if part.text:
+    if isinstance(part, dict):
+        return {"type": "dict", "preview": _truncate_text(json.dumps(part, default=str), 300)}
+    if getattr(part, "text", None):
         return {"type": "text", "preview": _truncate_text(part.text, 300)}
-    if part.function_call:
+    if getattr(part, "function_call", None):
         fc = part.function_call
         return {
             "type": "function_call",
             "name": getattr(fc, "name", ""),
             "args_keys": list(dict(fc.args or {}).keys()) if fc.args else [],
         }
-    if part.function_response:
+    if getattr(part, "function_response", None):
         return {"type": "function_response", "name": part.function_response.name or ""}
     return {"type": "unknown"}
+
+
+def _content_role(c: Any) -> str:
+    if isinstance(c, dict):
+        return str(c.get("role") or "unknown")
+    return getattr(c, "role", None) or "unknown"
+
+
+def _content_parts(c: Any) -> list[Any]:
+    if isinstance(c, dict):
+        content = c.get("content")
+        if isinstance(content, str):
+            return [{"text": content}] if content else []
+        if isinstance(content, list):
+            return content
+        return []
+    return getattr(c, "parts", None) or []
 
 
 def _format_contents_summary(contents: list[Any]) -> list[dict[str, Any]]:
@@ -181,24 +200,26 @@ def _format_contents_summary(contents: list[Any]) -> list[dict[str, Any]]:
         return []
     result: list[dict[str, Any]] = []
     for c in contents:
-        parts_list = getattr(c, "parts", None) or []
+        parts_list = _content_parts(c)
         parts_summary = [_format_content_part_summary(p) for p in parts_list]
-        result.append({"role": c.role or "unknown", "parts": parts_summary})
+        result.append({"role": _content_role(c), "parts": parts_summary})
     return result
 
 
 def _serialize_content_part(part: Any) -> dict[str, Any]:
     """Serialize a content part to dict for raw logging."""
-    if part.text:
+    if isinstance(part, dict):
+        return {"type": "dict", "content": json.dumps(part, default=str)[:200]}
+    if getattr(part, "text", None):
         return {"type": "text", "content": part.text}
-    if part.function_call:
+    if getattr(part, "function_call", None):
         fc = part.function_call
         return {
             "type": "function_call",
             "name": getattr(fc, "name", ""),
             "args": dict(fc.args) if fc.args else {},
         }
-    if part.function_response:
+    if getattr(part, "function_response", None):
         return {
             "type": "function_response",
             "name": part.function_response.name or "",
@@ -213,9 +234,9 @@ def _serialize_contents(contents: list[Any]) -> list[dict[str, Any]]:
         return []
     result: list[dict[str, Any]] = []
     for c in contents:
-        parts_list = getattr(c, "parts", None) or []
+        parts_list = _content_parts(c)
         parts_serialized = [_serialize_content_part(p) for p in parts_list]
-        result.append({"role": c.role or "unknown", "parts": parts_serialized})
+        result.append({"role": _content_role(c), "parts": parts_serialized})
     return result
 
 
