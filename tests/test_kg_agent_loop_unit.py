@@ -638,3 +638,45 @@ def test_coerce_parsed_to_dict_wraps_strings() -> None:
         fallback_text=None,
     )
     assert unchanged["answer"] == "ok"
+
+
+def test_parse_json_best_effort_salvages_answer_from_broken_envelope() -> None:
+    """When the model returns a JSON envelope with an unescaped internal quote
+    so json.loads raises, _parse_json_best_effort must still recover the
+    answer text instead of returning None (which would leak the whole envelope
+    to the user)."""
+    from lib.kg_agent_loop import _parse_json_best_effort
+
+    broken = (
+        '{"answer":"### Reducing Non-Revenue Water\\n\\nMinister said: "quote here" '
+        'with more text","cite_utterance_ids":["u1:1","u1:2"],"focus_node_ids":[],"followup_questions":[]}'
+    )
+    parsed = _parse_json_best_effort(broken)
+    assert parsed is not None
+    answer = parsed.get("answer", "")
+    assert "Reducing Non-Revenue Water" in answer
+    assert "Minister said:" in answer
+    assert "cite_utterance_ids" not in answer
+    assert "focus_node_ids" not in answer
+    assert "followup_questions" not in answer
+
+
+def test_parse_json_best_effort_salvages_double_encoded_envelope() -> None:
+    """When the model double-encodes (returns a JSON string of the envelope),
+    json.loads yields a str, which previously returned None. Salvage the answer."""
+    from lib.kg_agent_loop import _parse_json_best_effort
+
+    inner = '{"answer":"clean markdown answer","cite_utterance_ids":["u:1"],"focus_node_ids":[],"followup_questions":[]}'
+    double_encoded = json.dumps(inner)  # a JSON string containing the envelope
+    parsed = _parse_json_best_effort(double_encoded)
+    assert parsed is not None
+    assert parsed.get("answer") == "clean markdown answer"
+    assert "cite_utterance_ids" not in parsed.get("answer", "")
+
+
+def test_parse_json_best_effort_returns_none_for_non_envelope_garbage() -> None:
+    """Plain prose / non-JSON must still return None."""
+    from lib.kg_agent_loop import _parse_json_best_effort
+
+    assert _parse_json_best_effort("Here is the answer in plain prose.") is None
+    assert _parse_json_best_effort("### Heading\n\nBody text only, no JSON.") is None

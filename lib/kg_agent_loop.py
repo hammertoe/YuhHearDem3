@@ -332,6 +332,56 @@ class _CerebrasAdapter:
         self.candidates = [_GeminiStyleCandidate(content=content)]
 
 
+_ENVELOPE_STRUCTURAL_KEYS = ("cite_utterance_ids", "focus_node_ids", "followup_questions")
+
+
+def _extract_answer_from_envelope(text: str) -> str | None:
+    """Tolerantly extract the value of the "answer" field from a JSON envelope.
+
+    Used when json.loads fails (e.g. an unescaped internal quote from the model)
+    or yields a string (double-encoded). Walks past escapes to find the closing
+    quote, so an unescaped internal quote truncates the value rather than
+    leaking the whole envelope to the user.
+    """
+    if not text:
+        return None
+    s = text.strip()
+    marker = '"answer"'
+    idx = s.find(marker)
+    if idx < 0:
+        return None
+    rest = s[idx + len(marker):].lstrip()
+    if not rest.startswith(":"):
+        return None
+    rest = rest[1:].lstrip()
+    if not rest.startswith('"'):
+        return None
+    i = 1
+    n = len(rest)
+    while i < n:
+        ch = rest[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == '"':
+            raw_value = rest[1:i]
+            try:
+                return json.loads(f'"{raw_value}"')
+            except Exception:
+                return None
+        i += 1
+    return None
+
+
+def _looks_like_json_envelope(text: str | None) -> bool:
+    if not text:
+        return False
+    s = text.lstrip()
+    if not s.startswith("{"):
+        return False
+    return any(f'"{k}"' in s for k in _ENVELOPE_STRUCTURAL_KEYS)
+
+
 def _parse_json_best_effort(text: str | None) -> dict[str, Any] | None:
     if not text:
         return None
@@ -346,8 +396,19 @@ def _parse_json_best_effort(text: str | None) -> dict[str, Any] | None:
     try:
         result = json.loads(raw)
     except Exception:
+        result = None
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, str):
+        envelope_text = result
+    elif _looks_like_json_envelope(raw):
+        envelope_text = raw
+    else:
         return None
-    return result if isinstance(result, dict) else None
+    answer = _extract_answer_from_envelope(envelope_text)
+    if answer is None:
+        return None
+    return {"answer": answer}
 
 
 def _coerce_parsed_to_dict(parsed: Any, *, fallback_text: str | None) -> dict[str, Any]:
@@ -1282,11 +1343,18 @@ class KGAgentLoop:
             _trace_section_end(trace_id)
 
         _trace_section_start(trace_id, "FINAL ANSWER PARSING")
-        parsed = _parse_json_best_effort(getattr(response, "text", None))
         response_text = getattr(response, "text", None)
+        parsed = _parse_json_best_effort(response_text)
         if not parsed:
+            fallback_answer: str | None = response_text
+            if _looks_like_json_envelope(response_text):
+                fallback_answer = _extract_answer_from_envelope(response_text or "")
             parsed = {
-                "answer": response_text or "I couldn't generate an answer.",
+                "answer": (
+                    fallback_answer
+                    if isinstance(fallback_answer, str) and fallback_answer.strip()
+                    else "I couldn't generate an answer."
+                ),
                 "cite_utterance_ids": [],
                 "focus_node_ids": [],
                 "followup_questions": [],
