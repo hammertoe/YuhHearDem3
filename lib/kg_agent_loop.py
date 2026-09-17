@@ -738,7 +738,7 @@ class KGAgentLoop:
 
     @staticmethod
     def _default_model() -> str:
-        return os.getenv("LLM_MODEL", "gemma-3-27b-it")
+        return os.getenv("LLM_MODEL", "qwen-3.8-27b")
 
     def _system_prompt(self) -> str:
         today = datetime.now().date().isoformat()
@@ -966,7 +966,7 @@ class KGAgentLoop:
         max_tokens = 512 if is_tool_call else 2048
         tools = self._openai_tools() if is_tool_call else None
 
-        # Cerebras's strict json_schema response_format pushes gemma-4-31b to
+        # Cerebras's strict json_schema response_format pushes smaller models to
         # return just the bare schema (e.g. "{}") instead of a real answer.
         # Let the model output JSON naturally via prompt instructions instead.
         response_format: dict[str, Any] | None = None

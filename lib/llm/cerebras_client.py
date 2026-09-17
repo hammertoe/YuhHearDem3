@@ -39,7 +39,7 @@ class LLMResponse:
 class CerebrasClient:
     """Wrapper around the Cerebras Cloud SDK chat.completions API."""
 
-    DEFAULT_MODEL = "gemma-4-31b"
+    DEFAULT_MODEL = "qwen-3.8-27b"
 
     def __init__(
         self,
