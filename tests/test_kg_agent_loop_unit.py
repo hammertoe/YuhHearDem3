@@ -680,3 +680,21 @@ def test_parse_json_best_effort_returns_none_for_non_envelope_garbage() -> None:
 
     assert _parse_json_best_effort("Here is the answer in plain prose.") is None
     assert _parse_json_best_effort("### Heading\n\nBody text only, no JSON.") is None
+
+
+def test_parse_json_best_effort_salvages_truncated_envelope() -> None:
+    """When the model's JSON envelope is truncated (no closing quote / structural
+    keys) — which Cerebras/qwen can produce when it hits a token limit —
+    _parse_json_best_effort must still return the partial answer instead of
+    leaking the envelope prefix to the user."""
+    from lib.kg_agent_loop import _parse_json_best_effort
+
+    truncated = (
+        '{"answer":"### Mains Replacement\\n\\nMinister noted in February 202'
+    )
+    parsed = _parse_json_best_effort(truncated)
+    assert parsed is not None
+    answer = parsed.get("answer", "")
+    assert "Mains Replacement" in answer
+    assert "noted in February 202" in answer
+    assert not answer.startswith('{"answer"')

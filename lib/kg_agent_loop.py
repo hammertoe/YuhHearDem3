@@ -332,16 +332,13 @@ class _CerebrasAdapter:
         self.candidates = [_GeminiStyleCandidate(content=content)]
 
 
-_ENVELOPE_STRUCTURAL_KEYS = ("cite_utterance_ids", "focus_node_ids", "followup_questions")
-
-
 def _extract_answer_from_envelope(text: str) -> str | None:
     """Tolerantly extract the value of the "answer" field from a JSON envelope.
 
-    Used when json.loads fails (e.g. an unescaped internal quote from the model)
-    or yields a string (double-encoded). Walks past escapes to find the closing
-    quote, so an unescaped internal quote truncates the value rather than
-    leaking the whole envelope to the user.
+    Used when json.loads fails (e.g. an unescaped internal quote from the model,
+    or a truncated response that hit a token limit). Walks past escapes to find
+    the closing quote; if the envelope is truncated (no closing quote before
+    end-of-string), returns the partial value rather than leaking the envelope.
     """
     if not text:
         return None
@@ -370,7 +367,11 @@ def _extract_answer_from_envelope(text: str) -> str | None:
             except Exception:
                 return None
         i += 1
-    return None
+    raw_value = rest[1:n]
+    try:
+        return json.loads(f'"{raw_value}"')
+    except Exception:
+        return raw_value
 
 
 def _looks_like_json_envelope(text: str | None) -> bool:
@@ -379,7 +380,7 @@ def _looks_like_json_envelope(text: str | None) -> bool:
     s = text.lstrip()
     if not s.startswith("{"):
         return False
-    return any(f'"{k}"' in s for k in _ENVELOPE_STRUCTURAL_KEYS)
+    return '"answer"' in s
 
 
 def _parse_json_best_effort(text: str | None) -> dict[str, Any] | None:
