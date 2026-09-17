@@ -1025,7 +1025,11 @@ class KGAgentLoop:
     async def _call_cerebras_llm(self, messages: list[dict[str, Any]], is_tool_call: bool) -> Any:
         """Call Cerebras and return an LLMResponse wrapped to look like a Gemini response."""
         temperature = 0.2
-        max_tokens = 512 if is_tool_call else 2048
+        max_tokens = (
+            int(os.getenv("LLM_MAX_TOKENS_TOOL_CALL", "512"))
+            if is_tool_call
+            else int(os.getenv("LLM_MAX_TOKENS_ANSWER", "8192"))
+        )
         tools = self._openai_tools() if is_tool_call else None
 
         # Cerebras's strict json_schema response_format pushes smaller models to

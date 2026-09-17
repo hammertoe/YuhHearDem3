@@ -99,7 +99,7 @@ class LLMConfig:
     cerebras_api_key: str = os.getenv("CEREBRAS_API_KEY", "")
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
     max_tokens_tool_call: int = int(os.getenv("LLM_MAX_TOKENS_TOOL_CALL", "512"))
-    max_tokens_answer: int = int(os.getenv("LLM_MAX_TOKENS_ANSWER", "2048"))
+    max_tokens_answer: int = int(os.getenv("LLM_MAX_TOKENS_ANSWER", "8192"))
 
 
 @dataclass
